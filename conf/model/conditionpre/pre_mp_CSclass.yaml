@@ -1,0 +1,8 @@
+condition_predict:
+  - _target_: concdvae.pl_modules.PreCondition.ClassConditionPredict
+    condition_name: CS_type
+    n_type: 7
+    latent_dim: ${model.latent_dim}
+    hidden_dim: 4
+    n_layers: 1
+    drop: 0.2

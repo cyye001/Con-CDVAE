@@ -1,0 +1,11 @@
+# reproducibility
+deterministic: True
+random_seed: 123
+
+
+PT_train:
+  start_epochs: 0
+  max_epochs: ${data.train_max_epochs}
+  print_freq: 20
+  clip_grad_norm: -1
+  clip_grad_norm_epoch: 100

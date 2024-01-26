@@ -1,0 +1,18 @@
+condition_predict:
+  - _target_: concdvae.pl_modules.PreCondition.ScalarConditionPredict
+    condition_name: formation_energy_per_atom
+    condition_min: -5.0
+    condition_max: 1.0
+    latent_dim: ${model.latent_dim}
+    hidden_dim: 256
+    out_dim: 1
+    n_layers: 2
+
+  - _target_: concdvae.pl_modules.PreCondition.ScalarConditionPredict
+    condition_name: band_gap
+    condition_min: -1.0
+    condition_max: 9.0
+    latent_dim: ${model.latent_dim}
+    hidden_dim: 256
+    out_dim: 1
+    n_layers: 2

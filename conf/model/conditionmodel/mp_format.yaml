@@ -1,0 +1,11 @@
+_target_: concdvae.pl_modules.ConditionModel.ConditioningModule
+n_features: 128
+n_layers: 2
+condition_embeddings:
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
+    condition_name: formation_energy_per_atom
+    condition_min: -6.0
+    condition_max: 1.0
+    grid_spacing: 0.5
+    n_features: 64
+    n_layers: 3

@@ -1,0 +1,16 @@
+condition_predict:
+  - _target_: concdvae.pl_modules.PreCondition.ClassConditionPredict
+    condition_name: FM_type
+    n_type: 2
+    latent_dim: ${model.latent_dim}
+    hidden_dim: 256
+    n_layers: 2
+    drop: 0.4
+
+  - _target_: concdvae.pl_modules.PreCondition.ClassConditionPredict
+    condition_name: BG_type
+    n_type: 2
+    latent_dim: ${model.latent_dim}
+    hidden_dim: 256
+    n_layers: 2
+    drop: 0.4
