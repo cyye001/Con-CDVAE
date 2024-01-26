@@ -99,7 +99,7 @@ After training, model checkpoints can be found in
 `your_labelmodel_best.pth.tar`. The trained model can be found in 
 `cgcnn/pre-trained`.
 
-When you're generatd crystals and need to evaluate, 
+When you've generated crystals and need to evaluate, 
 run the following command:
 ```
 python cgcnn/predict.py --gendatapath /your_path_to_generated_crystal/ --modelpath /your_path_to_cgcnn_model/model_best.pth.tar --file your_crystal_file.pt --label your_label
