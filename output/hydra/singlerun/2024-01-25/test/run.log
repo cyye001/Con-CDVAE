@@ -1,0 +1,10 @@
+[2024-01-25 17:21:15,027][hydra.utils][INFO] - Instantiating <concdvae.pl_data.datamodule.CrystDataModule>
+[2024-01-25 17:23:53,057][hydra.utils][INFO] - Instantiating <concdvae.pl_data.datamodule.CrystDataModule>
+[2024-01-25 17:26:12,778][hydra.utils][INFO] - Instantiating <concdvae.pl_data.datamodule.CrystDataModule>
+[2024-01-25 17:26:41,343][hydra.utils][INFO] - Instantiating <concdvae.pl_modules.model.CDVAE>
+[2024-01-25 17:27:20,845][hydra.utils][INFO] - Start Train
+[2024-01-25 17:33:24,043][hydra.utils][INFO] - END
+[2024-01-25 17:42:06,885][hydra.utils][INFO] - Instantiating <concdvae.pl_data.datamodule.CrystDataModule>
+[2024-01-25 17:42:13,924][hydra.utils][INFO] - Instantiating <concdvae.pl_modules.model.CDVAE>
+[2024-01-25 17:42:46,193][hydra.utils][INFO] - Start Train
+[2024-01-25 17:48:20,748][hydra.utils][INFO] - END
