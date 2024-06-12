@@ -247,7 +247,7 @@ def val_step(cfg, model, val_loaders, optimizer, epoch, prefix='val'):
 
             if cfg.accelerator != 'cpu':
                 batch = batch.cuda()
-            outputs = model(batch, teacher_forcing=False, training=True)
+            outputs = model(batch, teacher_forcing=True, training=False)
             if cfg.accelerator == 'DDP':
                 log_dict, loss = model.module.compute_stats(batch, outputs, prefix=prefix)
             else:
