@@ -175,18 +175,11 @@ def main(args):
             cfg.data.preprocess_workers = 1
         with open(condition_root, 'r') as file:
             new_condition = yaml.safe_load(file)##
-        if args.skEMB != 'None':
-            condition_root = os.path.join(os.path.dirname(condition_root), args.skEMB)
-            with open(condition_root, 'r') as file:
-                skEMB_conf =  yaml.safe_load(file)
-                print(skEMB_conf)
-        else:
-            skEMB_conf = None
+
     else:
         print('use default feature')
         new_condition = None
         ari = None
-        skEMB_conf = None
 
 
     ld_kwargs_conz = SimpleNamespace(fc_num_layers=args_conz.fc_num_layers,
@@ -200,7 +193,6 @@ def main(args):
                                 new_condition=new_condition,
                                 ari=ari,
                                 EMB_way=args.EMB_way,
-                                skEMB_conf=skEMB_conf,
                                 tolerate=args.tolerate,
                                 use_one=args.use_one,
                                 data_root=cfg.data.root_path,
