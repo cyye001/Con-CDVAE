@@ -244,10 +244,6 @@ class CDVAE(nn.Module):
 
         kld_loss = self.kld_loss(mu, log_var)
 
-        if self.hparams.predict_property:
-            property_loss = self.property_loss(z, batch)
-        else:
-            property_loss = 0.
 
         output = {
             'num_atom_loss': num_atom_loss,
@@ -256,7 +252,6 @@ class CDVAE(nn.Module):
             'coord_loss': coord_loss,
             'type_loss': type_loss,
             'kld_loss': kld_loss,
-            'property_loss': property_loss,
             'pred_num_atoms': pred_num_atoms,
             'pred_lengths_and_angles': pred_lengths_and_angles,
             'pred_lengths': pred_lengths,
@@ -369,8 +364,9 @@ class CDVAE(nn.Module):
         type_loss = outputs['type_loss']
         kld_loss = outputs['kld_loss']
         composition_loss = outputs['composition_loss']
-        property_loss = outputs['property_loss']
         predict_loss = outputs['predict_loss']
+        if not self.hparams.predict_property:
+            predict_loss = predict_loss * 0.0
 
         loss = (
                 self.hparams.cost_natom * num_atom_loss +
@@ -379,7 +375,6 @@ class CDVAE(nn.Module):
                 self.hparams.cost_type * type_loss +
                 self.hparams.beta * kld_loss +
                 self.hparams.cost_composition * composition_loss +
-                self.hparams.cost_property * property_loss +
                 self.hparams.cost_property * predict_loss)
 
 
@@ -433,7 +428,7 @@ class CDVAE(nn.Module):
 
             log_dict.update({
                 f'{prefix}_loss': loss,
-                f'{prefix}_property_loss': property_loss,
+                # f'{prefix}_property_loss': property_loss,
                 f'{prefix}_natom_accuracy': num_atom_accuracy,
                 f'{prefix}_lengths_mard': lengths_mard,
                 f'{prefix}_angles_mae': angles_mae,
