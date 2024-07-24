@@ -72,7 +72,7 @@ and "general_less.csv" is for *less* strategy.
 
 Then run the following command:
 ```
-python scripts/evaluate_diff.py --model_path  --model_file/your_path_to_model_checkpoints/ model_expname.pth  --conz_file conz_model_your_label_diffu.pth  --label your_label --prop_path general_full.csv
+python scripts/evaluate_diff.py --model_path /your_path_to_model_checkpoints/  --model_file model_expname.pth  --conz_file conz_model_your_label_diffu.pth  --label your_label --prop_path general_full.csv
 ```
 
 If you want to filter latent variables using the *Predictor* block, set 
