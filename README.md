@@ -5,6 +5,9 @@ This code is improved on the basis of
 and implements the generation of crystals according to 
 the target properties.
 
+Paper: [Con-CDVAE: A method for the conditional generation of crystal structures](https://www.sciencedirect.com/science/article/pii/S2950463524000036)
+arXiv: [https://arxiv.org/abs/2403.12478](https://arxiv.org/abs/2403.12478)
+
 ## Installation
 It easy to building a python environment using conda.
 Run the following command to install the environment:
