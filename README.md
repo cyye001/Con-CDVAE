@@ -6,6 +6,7 @@ and implements the generation of crystals according to
 the target properties.
 
 Paper: [Con-CDVAE: A method for the conditional generation of crystal structures](https://www.sciencedirect.com/science/article/pii/S2950463524000036)
+
 arXiv: [https://arxiv.org/abs/2403.12478](https://arxiv.org/abs/2403.12478)
 
 ## Installation
