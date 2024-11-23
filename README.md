@@ -5,7 +5,7 @@ This code is improved on the basis of
 and implements the generation of crystals according to 
 the target properties.
 
-Ref: [Ye C Y, Weng H M, Wu Q S. Computational Materials Today, 2024, 1: 100003.](https://www.sciencedirect.com/science/article/pii/S2950463524000036)
+Ref: [Cai-Yuan Ye, Hong-Ming Weng, Quan-Sheng Wu, Con-CDVAE: A method for the conditional generation of crystal structures, Computational Materials Today, 1, 100003 (2024).](https://www.sciencedirect.com/science/article/pii/S2950463524000036)
 
 arXiv: [https://arxiv.org/abs/2403.12478](https://arxiv.org/abs/2403.12478)
 
