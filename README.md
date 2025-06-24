@@ -93,6 +93,7 @@ torchrun --nproc_per_node 4 concdvae/run.py \
     expname=test \
     model=vae_mp_format \
     train.pl_trainer.accelerator=gpu  \
+    train.pl_trainer.devices=4 \
     train.pl_trainer.strategy=ddp_find_unused_parameters_true 
 ```
 After training, model checkpoints can be found in
