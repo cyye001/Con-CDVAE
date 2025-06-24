@@ -8,18 +8,28 @@ from torch_geometric.loader import DataLoader
 
 from omegaconf import DictConfig, OmegaConf
 from hydra.experimental import compose, initialize_config_dir
+from hydra.core.global_hydra import GlobalHydra
 
 import smact
 from smact.screening import pauling_test
 
 from concdvae.pl_data.datamodule import worker_init_fn
 from concdvae.common.utils import PROJECT_ROOT
-from concdvae.common.data_utils import chemical_symbols, GaussianDistance
+from concdvae.common.data_utils import chemical_symbols
 
 
 def load_model(model_path, model_file, load_data=False):
-    initialize_config_dir(config_dir=model_path)
-    cfg: DictConfig = compose(config_name="hparams")
+    GlobalHydra.instance().clear()  # 清除之前的初始化
+    with initialize_config_dir(str(model_path)):
+        cfg = compose(config_name='hparams')
+        ckpts = list(Path(model_path).glob('*.ckpt'))
+        if len(ckpts) > 0:
+            ckpt_epochs = np.array(
+                [int(ckpt.parts[-1].split('-')[0].split('=')[1]) for ckpt in ckpts])
+            ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
+        if model_file != None:
+            ckpt = os.path.join(model_path, model_file)
+
 
     model = hydra.utils.instantiate(
         cfg.model,
@@ -29,10 +39,13 @@ def load_model(model_path, model_file, load_data=False):
         _recursive_=False,
     )
 
-    model_root = Path(model_path) / model_file
-    checkpoint = torch.load(model_root, map_location=torch.device('cpu'))
-    model_state_dict = checkpoint['model']
-    model.load_state_dict(model_state_dict)
+    state_dict = torch.load(ckpt, map_location="cpu")
+    state_dict = state_dict["state_dict"]
+    model.load_state_dict(state_dict)
+    # model_root = Path(model_path) / model_file
+    # checkpoint = torch.load(model_root, map_location=torch.device('cpu'))
+    # model_state_dict = checkpoint['model']
+    # model.load_state_dict(model_state_dict)
     lattice_scaler = torch.load(Path(model_path) / 'lattice_scaler.pt')
     model.lattice_scaler = lattice_scaler
 

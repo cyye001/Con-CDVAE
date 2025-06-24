@@ -1,65 +1,131 @@
 import hydra
 import omegaconf
 import torch
-import pandas as pd
-import numpy as np
 import os
-import json
+import pandas as pd
 from omegaconf import ValueNode
 from torch.utils.data import Dataset
 
 from torch_geometric.data import Data
-from pymatgen.core.structure import Structure
 
 from concdvae.common.utils import PROJECT_ROOT
 from concdvae.common.data_utils import (
-    preprocess, add_scaled_lattice_prop,chemical_symbols)
+    preprocess, preprocess_tensors, add_scaled_lattice_prop, chemical_symbols)
+
 
 class CrystDataset(Dataset):
     def __init__(self, name: ValueNode, path: ValueNode,
-                 prop: ValueNode, use_prop: ValueNode, niggli: ValueNode, primitive: ValueNode,
+                 prop: ValueNode, niggli: ValueNode, primitive: ValueNode,
                  graph_method: ValueNode, preprocess_workers: ValueNode,
                  lattice_scale_method: ValueNode,
+                 save_path: ValueNode, tolerance: ValueNode, use_space_group: ValueNode, use_pos_index: ValueNode,
+                 load_old: ValueNode, prelo_prop: ValueNode,
                  **kwargs):
         super().__init__()
         self.path = path
         self.name = name
         self.df = pd.read_csv(path)
         self.prop = prop
-        self.use_prop = use_prop
+        self.prelo_prop = prelo_prop
         self.niggli = niggli
         self.primitive = primitive
         self.graph_method = graph_method
         self.lattice_scale_method = lattice_scale_method
 
+        self.use_space_group = use_space_group
+        self.use_pos_index = use_pos_index
+        self.tolerance = tolerance
 
-
-        self.cached_data = preprocess(
-            self.path,
-            preprocess_workers,
-            niggli=self.niggli,
-            primitive=self.primitive,
-            graph_method=self.graph_method,
-            prop_list=list(prop))
+        if os.path.exists(save_path) and load_old:
+            self.cached_data = torch.load(save_path)
+        else:
+            self.cached_data = preprocess(
+                self.path,
+                preprocess_workers,
+                niggli=self.niggli,
+                primitive=self.primitive,
+                graph_method=self.graph_method,
+                use_space_group=self.use_space_group,
+                tol=self.tolerance,
+                prelo_prop_list=list(prelo_prop))
+            torch.save(self.cached_data, save_path)
 
         add_scaled_lattice_prop(self.cached_data, lattice_scale_method)
         self.lattice_scaler = None
+        self.scaler = None
 
-        atom_init_file = os.path.dirname(self.path)
-        atom_init_file = os.path.join(atom_init_file, 'atom_init.json')
-        if os.path.exists(atom_init_file):
-            self.ari = AtomCustomJSONInitializer(atom_init_file)
-            for i in range(len(self.cached_data)):
-                crystal = Structure.from_str(self.cached_data[i]['cif'], fmt="cif")
+    def __len__(self) -> int:
+        return len(self.cached_data)
 
-                atom_fea = np.vstack([self.ari.get_atom_fea(crystal[i].specie.number)
-                                      for i in range(len(crystal))])
-                atom_fea = torch.Tensor(atom_fea)
-                atom_fea = torch.mean(atom_fea, dim=0)
-                atom_fea = atom_fea.reshape(1, 92)
-                self.cached_data[i].update({'formula':atom_fea})
-        else:
-            self.ari = None
+    def __getitem__(self, index):
+        data_dict = self.cached_data[index]
+
+        # scaler is set in DataModule set stage
+        # prop = self.scaler.transform(data_dict[self.prop])
+        (frac_coords, atom_types, lengths, angles, edge_indices,
+         to_jimages, num_atoms) = data_dict['graph_arrays']
+
+        # atom_coords are fractional coordinates
+        # edge_index is incremented during batching
+        # https://pytorch-geometric.readthedocs.io/en/latest/notes/batching.html
+        data = Data(
+            frac_coords=torch.Tensor(frac_coords),
+            atom_types=torch.LongTensor(atom_types),
+            lengths=torch.Tensor(lengths).view(1, -1),
+            angles=torch.Tensor(angles).view(1, -1),
+            edge_index=torch.LongTensor(
+                edge_indices.T).contiguous(),  # shape (2, num_edges)
+            to_jimages=torch.LongTensor(to_jimages),
+            num_atoms=num_atoms,
+            num_bonds=edge_indices.shape[0],
+            num_nodes=num_atoms,  # special attribute used for batching in pytorch geometric
+            # y=prop.view(1, -1),
+        )
+        
+        # print('here is self prop', self.prop)
+        prop_data = {key: value for key, value in data_dict.items() if key in self.prop}
+        # print('here is prop data:', prop_data, flush=True)
+        data.update(prop_data)
+
+        if self.use_space_group:
+            data.spacegroup = torch.LongTensor([data_dict['spacegroup']])
+            data.ops = torch.Tensor(data_dict['wyckoff_ops'])
+            data.anchor_index = torch.LongTensor(data_dict['anchors'])
+            data.ops_inv = torch.linalg.pinv(data.ops[:,:3,:3])
+
+        if self.use_pos_index:
+            pos_dic = {}
+            indexes = []
+            for atom in atom_types:
+                pos_dic[atom] = pos_dic.get(atom, 0) + 1
+                indexes.append(pos_dic[atom] - 1)
+            data.index = torch.LongTensor(indexes)
+
+        return data
+
+    def __repr__(self) -> str:
+        return f"CrystDataset({self.name=}, {self.path=})"
+
+
+class TensorCrystDataset(Dataset):
+    def __init__(self, crystal_array_list, niggli, primitive,
+                 graph_method, preprocess_workers,
+                 lattice_scale_method, **kwargs):
+        super().__init__()
+        self.niggli = niggli
+        self.primitive = primitive
+        self.graph_method = graph_method
+        self.lattice_scale_method = lattice_scale_method
+
+        self.cached_data = preprocess_tensors(
+            crystal_array_list,
+            niggli=self.niggli,
+            primitive=self.primitive,
+            graph_method=self.graph_method)
+
+        add_scaled_lattice_prop(self.cached_data, lattice_scale_method)
+        self.lattice_scaler = None
+        self.scaler = None
 
     def __len__(self) -> int:
         return len(self.cached_data)
@@ -85,19 +151,65 @@ class CrystDataset(Dataset):
             num_bonds=edge_indices.shape[0],
             num_nodes=num_atoms,  # special attribute used for batching in pytorch geometric
         )
-
-        exclude_keys = ['cif', 'graph_arrays', 'scaled_lattice']
-        filtered_data = {key: value for key, value in data_dict.items() if key not in exclude_keys}
-        data.update(filtered_data)
-
-        if self.ari != None:
-            data.update({'formula': self.cached_data[index]['formula']})
-
         return data
 
     def __repr__(self) -> str:
         return f"TensorCrystDataset(len: {len(self.cached_data)})"
 
+
+@hydra.main(config_path=str(PROJECT_ROOT / "conf"), config_name="default")
+def main(cfg: omegaconf.DictConfig):
+    from torch_geometric.data import Batch
+    from concdvae.common.data_utils import get_scaler_from_data_list
+    dataset: CrystDataset = hydra.utils.instantiate(
+        cfg.data.datamodule.datasets.train, _recursive_=False
+    )
+    lattice_scaler = get_scaler_from_data_list(
+        dataset.cached_data,
+        key='scaled_lattice')
+    scaler = get_scaler_from_data_list(
+        dataset.cached_data,
+        key=dataset.prop)
+
+    dataset.lattice_scaler = lattice_scaler
+    dataset.scaler = scaler
+    data_list = [dataset[i] for i in range(len(dataset))]
+    batch = Batch.from_data_list(data_list)
+    return batch
+
+
+def formula2atomnums(formula):
+    elements = []
+    current_element = ""
+    current_count = ""
+
+    for char in formula:
+        if char.isupper():
+            if current_element:
+                elements.append((current_element, int(current_count) if current_count else 1))
+            current_element = char
+            current_count = ""
+        elif char.islower():
+            current_element += char
+        elif char.isdigit():
+            current_count += char
+
+    if current_element:
+        elements.append((current_element, int(current_count) if current_count else 1))
+
+    ele_list = []
+    for data in elements:
+        for time in range(data[1]):
+            ele_list.append(data[0])
+
+
+    index_list = []
+    for ele in ele_list:
+        index = chemical_symbols.index(ele)
+        index_list.append(index)
+
+
+    return index_list
 
 class AtomInitializer(object):
     """
@@ -151,36 +263,5 @@ class AtomCustomJSONInitializer(AtomInitializer):
         for key, value in elem_embedding.items():
             self._embedding[key] = np.array(value, dtype=float)
 
-
-def formula2atomnums(formula):
-    elements = []
-    current_element = ""
-    current_count = ""
-
-    for char in formula:
-        if char.isupper():
-            if current_element:
-                elements.append((current_element, int(current_count) if current_count else 1))
-            current_element = char
-            current_count = ""
-        elif char.islower():
-            current_element += char
-        elif char.isdigit():
-            current_count += char
-
-    if current_element:
-        elements.append((current_element, int(current_count) if current_count else 1))
-
-    ele_list = []
-    for data in elements:
-        for time in range(data[1]):
-            ele_list.append(data[0])
-
-
-    index_list = []
-    for ele in ele_list:
-        index = chemical_symbols.index(ele)
-        index_list.append(index)
-
-
-    return index_list
+if __name__ == "__main__":
+    main()

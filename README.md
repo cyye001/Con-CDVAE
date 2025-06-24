@@ -9,18 +9,58 @@ Ref: [Cai-Yuan Ye, Hong-Ming Weng, Quan-Sheng Wu, Con-CDVAE: A method for the co
 
 arXiv: [https://arxiv.org/abs/2403.12478](https://arxiv.org/abs/2403.12478)
 
-## Installation
-It easy to building a python environment using conda.
-Run the following command to install the environment:
-```bash
-conda env create -f environment.yml
+
+## Update
+- v2.0.0 Use the new PyTorch environment
+- v1.0.0 Initial implementations of Con-CDVAE
+
+
+## Environment
+
+We recommend using Anaconda to manage Python environments. First, create and activate a new Python environment:
+```
+conda create --name concdvae310 python=3.10
+conda activate concdvae310
 ```
 
-Modify the following environment variables in `.env`.
+Then, use `requirements.txt` to install the Python packages.
+```
+pip install -r requirements.txt
+```
 
-- `PROJECT_ROOT`: path to the folder that contains this repo
-- `HYDRA_JOBS`: path to a folder to store hydra outputs
-- `WABDB`: path to a folder to store wabdb outputs
+Finally, the PyTorch-related libraries need to be installed according to your device and CUDA version. The version we used is:
+```
+torch                    2.3.0+cu118
+torchaudio               2.3.0+cu118
+torchvision              0.18.0+cu118
+
+torch_geometric          2.5.3
+torch_cluster            1.6.3+pt23cu118
+torch_scatter            2.1.2+pt23cu118
+torch_sparse             0.6.18+pt23cu118
+torch_spline_conv        1.2.2+pt23cu118
+
+pytorch-lightning        2.4.0
+torchmetrics             1.6.3
+```
+For details, you can refer to [PyTorch](https://pytorch.org), [pytorch-geometric](https://pytorch-geometric.readthedocs.io/en/latest/#), [pytorch-lightning](https://lightning.ai/docs/pytorch/stable/).
+
+
+After setting up the environment, you can use the provided model checkpoint to run PODGen for conditional generation of topological materials. Before doing so, make sure to update the necessary environment paths. You can either run the following commands:
+
+```
+cp .env_bak .env
+bash writeenv.sh
+```
+
+Or, if you prefer, modify the .env file manually. Update it with the following lines, replacing <YOUR_PATH_TO_PODGEN> with the absolute path to your PODGen directory:
+
+
+```
+export PROJECT_ROOT="<YOUR_PATH_TO_PODGEN>/PODGen"
+export HYDRA_JOBS="<YOUR_PATH_TO_PODGEN>/PODGen/output/hydra"
+export WABDB_DIR="<YOUR_PATH_TO_PODGEN>/PODGen/output/wandb"
+```
 
 ## Datasets
 
@@ -37,40 +77,44 @@ and they can be used in the same format as the sample.
 To train a Con-CDVAE, run the following command first:
 
 ```
-python concdvae/run.py train=new data=mptest expname=test model=vae_mp_CSclass
+python concdvae/run.py data=mptest expname=test model=vae_mp_format
 ```
 
 To use other dataset, user should prepare the data in the same forme as 
 the sample, and edit a new configure files in `conf/data/` folder, 
-and use `data=your_data_conf`. To train model for other property, use 
-`model=vae_mp_format` or `model=vae_mp_gap`. 
+and use `data=your_data_conf`. To train model for other property, you can try
+`model=vae_mp_gap`. 
 
-If you want to accelerate with a gpu, you should set `accelerator=gpu`
-in command line. If you want to accelerate with multiple gpus, you should
+If you want to accelerate with multiple gpus, you should
 run this command:
 ```
-torchrun --nproc_per_node 4 concdvae/run.py train=new data=mptest expname=test model=vae_mp_CSclass accelerator=ddp
+torchrun --nproc_per_node 4 concdvae/run.py \
+    data=mptest \
+    expname=test \
+    model=vae_mp_format \
+    train.pl_trainer.accelerator=gpu  \
+    train.pl_trainer.strategy=ddp_find_unused_parameters_true 
 ```
 After training, model checkpoints can be found in
-`$HYDRA_JOBS/singlerun/YYYY-MM-DD/model_expname.pth`.
+`$HYDRA_JOBS/singlerun/YYYY-MM-DD/<expname>/epoch=xxx-step=xxx.ckpt`.
 
 
 ### Step-two training
 After finishing step-one training, you can train the *Prior* block
 with the following command.
 ```
-python scripts/condition_diff_z.py --model_path /your_path_to_model_checkpoints/ --model_file model_expname.pth --fullfea 0 --label your_label
+python scripts/condition_diff_z.py --model_path /your_path_to_model_checkpoints/ --model_file epoch=xxx-step=xxx.ckpt --fullfea 0 --label <your_label>
 ```
 Then you can get the default condition *Prior* in 
-`/your_path_to_model_checkpoints/conz_model_your_label_diffu.pth`.
+`/your_path_to_model_checkpoints/conz_model_<your_label>_diffu.pth`.
 
-If you want to train full conditon *Prior*, you should change 
+<!-- If you want to train full conditon *Prior*, you should change 
 `--fullfea 0` to `--fullfea 1` and set
-`--newcond /your_path_to_conf/conf/conz_2.yaml --newdata mptest4conz`
+`--newcond /your_path_to_conf/conf/conz_2.yaml --newdata mptest4conz`-->
 
 ## Generating crystals with target propertise
 To generate materials, you should prepare condition file. 
-You can see the example in `/output/hydra/singlerun/2024-01-25/test/`,
+You can see the example in `/src`,
 where "general_full.csv" is for *default* strategy or *full* strategy, 
 and "general_less.csv" is for *less* strategy.
 

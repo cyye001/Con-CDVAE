@@ -120,6 +120,7 @@ class ScalarConditionEmbedding(nn.Module):
         self,
         inputs: Dict[str, torch.Tensor],
     ) -> torch.Tensor:
+        # print('here is input:',input.keys(),flush=True)
         # get the scalar condition value
         scalar_condition = torch.Tensor(inputs[self.condition_name]).float()
         # expand the scalar value with Gaussian rbfs

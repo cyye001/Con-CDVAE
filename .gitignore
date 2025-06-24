@@ -1,0 +1,13 @@
+LogErr/
+
+output/*
+
+.env
+
+pyrun_ddp.sh
+
+data/mp_20/*.pt
+
+data/mptest/*.pt
+
+data/mptest4conz/*.pt

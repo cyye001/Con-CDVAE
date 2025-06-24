@@ -21,16 +21,41 @@ from pathlib import Path
 from types import SimpleNamespace
 from torch_geometric.data import Batch
 import torch.nn as nn
-from hydra.experimental import compose, initialize_config_dir
+from hydra.experimental import compose
+from hydra.core.global_hydra import GlobalHydra
+from hydra import initialize_config_dir
 from omegaconf import DictConfig, OmegaConf
 from torch.nn import functional as F
+from pathlib import Path
 
 
-from eval_utils import load_model
-from concdvae.common.data_utils import GaussianDistance
-from concdvae.common.utils import param_statistics
-from concdvae.PT_train.training import AverageMeter
-from concdvae.pl_data.dataset import AtomCustomJSONInitializer, formula2atomnums
+# from eval_utils import load_model
+# from concdvae.common.data_utils import GaussianDistance
+# from concdvae.common.utils import param_statistics
+# from concdvae.PT_train.training import AverageMeter
+from concdvae.pl_modules.model import CDVAE
+from concdvae.pl_data.dataset import formula2atomnums
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+    def __repr__(self) -> str:
+        return ('%.3f(%.3f)'%(self.val,self.avg))
 
 class SinusoidalPositionEmbeddings(nn.Module):
     def __init__(self, dim):
@@ -360,29 +385,47 @@ def main(args):
             torch.cuda.manual_seed(args.seed)
 
     model_path = args.model_path # Path(args.model_path)
-    initialize_config_dir(config_dir=model_path)
-    cfg: DictConfig = compose(config_name="hparams")
+    model_file = args.model_file
+    # initialize_config_dir(config_dir=model_path)
+    # cfg: DictConfig = compose(config_name="hparams")
+
+    GlobalHydra.instance().clear()  # 清除之前的初始化
+    with initialize_config_dir(str(model_path)):
+        cfg = compose(config_name='hparams')
+        ckpts = list(Path(model_path).glob('*.ckpt'))
+        if len(ckpts) > 0:
+            ckpt_epochs = np.array(
+                [int(ckpt.parts[-1].split('-')[0].split('=')[1]) for ckpt in ckpts])
+            ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
+        if model_file != None:
+            ckpt = os.path.join(model_path, model_file)
+        model = CDVAE.load_from_checkpoint(ckpt, map_location="cpu")
+        print('Loaded checkpoint from {}'.format(ckpt))
+
     if args.fullfea == 1:
         print('use full feature')
         cfg.data.root_path = '${oc.env:PROJECT_ROOT}/data/'+args.newdata
-        cfg.data.prop = ['bandgap','formation','e_above_hull','a','b','c','alpha','beta','gamma','density',
+        cfg.data.prelo_prop = ['band_gap','formation_energy_per_atom','e_above_hull','a','b','c','alpha','beta','gamma','density',
                          'coor_number','n_atom','spacegroup','crystal_system']
-        cfg.data.use_prop = 'formation'
+        
         condition_root = args.newcond
 
         with open(condition_root, 'r') as file:
             new_condition = yaml.safe_load(file)
+
+        cfg.data.prop = [x['condition_name'] for x in new_condition['condition_embeddings']]
+        print('cfg.data.prop:', cfg.data.prop)
     else:
         print('use default feature')
         new_condition = None
-    if torch.cuda.is_available():
-        cfg.accelerator = 'gpu'
-        cfg.data.datamodule.accelerator = 'gpu'
-        print('use gpu')
-    else:
-        cfg.accelerator = 'cpu'
-        cfg.data.datamodule.accelerator = 'cpu'
-        print('use cpu')
+    # if torch.cuda.is_available():
+        # cfg.accelerator = 'gpu'
+    #     cfg.data.datamodule.accelerator = 'gpu'
+    #     print('use gpu')
+    # else:
+    #     cfg.accelerator = 'cpu'
+    #     cfg.data.datamodule.accelerator = 'cpu'
+    #     print('use cpu')
 
 
 
@@ -400,18 +443,19 @@ def main(args):
     conz_model = condition_diff_z(cfg, ld_kwargs)
 
 
-    model = hydra.utils.instantiate(
-        cfg.model,
-        optim=cfg.optim,
-        data=cfg.data,
-        logging=cfg.logging,
-        _recursive_=False,
-    )
 
-    model_root = Path(model_path) / args.model_file
-    checkpoint = torch.load(model_root, map_location=torch.device('cpu'))
-    model_state_dict = checkpoint['model']
-    model.load_state_dict(model_state_dict)
+    # model = hydra.utils.instantiate(
+    #     cfg.model,
+    #     optim=cfg.optim,
+    #     data=cfg.data,
+    #     logging=cfg.logging,
+    #     _recursive_=False,
+    # )
+
+    # model_root = Path(model_path) / args.model_file
+    # checkpoint = torch.load(model_root, map_location=torch.device('cpu'))
+    # model_state_dict = checkpoint['model']
+    # model.load_state_dict(model_state_dict)
     lattice_scaler = torch.load(Path(model_path) / 'lattice_scaler.pt')
     model.lattice_scaler = lattice_scaler
     for param in model.parameters():
@@ -423,19 +467,20 @@ def main(args):
     cfg.data.datamodule.batch_size.val=args.batch_size
     cfg.data.datamodule.batch_size.test=args.batch_size
     datamodule = hydra.utils.instantiate(cfg.data.datamodule, _recursive_=False)
+    datamodule.setup()
 
     print('Load data', file=sys.stdout)
     sys.stdout.flush()
 
-    print('model param:')
-    param_statistics(model)
-    print('conz_model param:')
-    param_statistics(conz_model)
+    # print('model param:')
+    # param_statistics(model)
+    # print('conz_model param:')
+    # param_statistics(conz_model)
 
     if torch.cuda.is_available():
         conz_model.to('cuda')
         model.to('cuda')
-        model.device = 'cuda'
+        # model.device = 'cuda'
         conz_model.device = 'cuda'
 
     optimizer = torch.optim.Adam(lr=args.step_lr,
@@ -458,7 +503,7 @@ def main(args):
         train_loss = AverageMeter()
         batch_time = AverageMeter()
         model.train()
-        for i, batch in enumerate(datamodule.train_dataloader):
+        for i, batch in enumerate(datamodule.train_dataloader()):
             if torch.cuda.is_available():
                 batch = batch.cuda()
 
@@ -472,10 +517,11 @@ def main(args):
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if i % cfg.train.PT_train.print_freq == 0:
+            # if i % cfg.train.PT_train.print_freq == 0:
+            if i % 1 == 0:
                 print('Epoch: [{0}][{1}/{2}]\t'
                       'Time {batch_time}\t'
-                      'Loss {train_loss}'.format(epoch, i, len(datamodule.train_dataloader),
+                      'Loss {train_loss}'.format(epoch, i, len(datamodule.train_dataloader()),
                                                  batch_time=batch_time,
                                                  train_loss=train_loss), file=sys.stdout)
                 sys.stdout.flush()
@@ -483,7 +529,7 @@ def main(args):
         batch_time = AverageMeter()
         val_loss = AverageMeter()
         model.eval()
-        for i, batch in enumerate(datamodule.val_dataloaders[0]):
+        for i, batch in enumerate(datamodule.val_dataloader()[0]):
             if torch.cuda.is_available():
                 batch = batch.cuda()
 
@@ -494,10 +540,11 @@ def main(args):
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if i % cfg.train.PT_train.print_freq == 0:
+            # if i % cfg.train.PT_train.print_freq == 0:
+            if i % 1 == 0:
                 print('{3}: [{0}][{1}/{2}]\t'
                       'Time {batch_time}\t'
-                      'Loss {val_loss}'.format(epoch, i, len(datamodule.val_dataloaders[0]), 'val',
+                      'Loss {val_loss}'.format(epoch, i, len(datamodule.val_dataloader()[0]), 'val',
                                                  batch_time=batch_time,
                                                  val_loss=val_loss), file=sys.stdout)
                 sys.stdout.flush()
@@ -521,9 +568,9 @@ def main(args):
         'train_loss_epoch': train_loss_epoch,
         'val_loss_epoch': val_loss_epoch, }
     loss_df = pd.DataFrame(loss_dict)
-    filename = 'conz_loss_file_' + args.label + '.xlsx'
+    filename = 'conz_loss_file_' + args.label + '.csv'
     excel_file = Path(model_path) / filename
-    loss_df.to_excel(excel_file, index=False)
+    loss_df.to_csv(excel_file, index=False)
     print('end')
 
 
@@ -541,8 +588,8 @@ if __name__ == '__main__':
     parser.add_argument('--min_lr', default=1e-5, type=float)
     parser.add_argument('--factor', default=0.6, type=float)
     parser.add_argument('--patience', default=30, type=int)
-    parser.add_argument('--epochs', default=3, type=int)
-    parser.add_argument('--batch_size', default=10, type=int)
+    parser.add_argument('--epochs', default=100, type=int)
+    parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--deterministic', default=True)
     parser.add_argument('--seed', default=456, type=int)
     parser.add_argument('--hidden_dim', default=256, type=int)

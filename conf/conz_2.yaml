@@ -17,7 +17,7 @@ condition_embeddings:
     n_layers: 3
 
   - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: formation
+    condition_name: formation_energy_per_atom
     condition_min: -5.0
     condition_max: 0.5
     grid_spacing: 0.5
@@ -25,7 +25,7 @@ condition_embeddings:
     n_layers: 3
 
   - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: bandgap
+    condition_name: band_gap
     condition_min: -0.5
     condition_max: 9.0
     grid_spacing: 0.5
@@ -48,8 +48,8 @@ condition_embeddings:
     n_features: 64
     n_layers: 3
 
-  - _target_: concdvae.pl_modules.ConditionModel.VectorialConditionEmbedding
-    condition_name: formula
-    n_in: 92
-    n_features: 64
-    n_layers: 3
+  # - _target_: concdvae.pl_modules.ConditionModel.VectorialConditionEmbedding
+  #   condition_name: formula
+  #   n_in: 92
+  #   n_features: 64
+  #   n_layers: 3

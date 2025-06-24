@@ -21,9 +21,10 @@ sigma_end: 0.01
 type_sigma_begin: 5.
 type_sigma_end: 0.01
 num_noise_level: 50
-predict_property: False
+predict_property: True
 
 n_delta: 40
+smooth: True
 
 defaults:
   - encoder: dimenet

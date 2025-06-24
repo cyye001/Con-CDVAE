@@ -10,7 +10,19 @@ from pymatgen.core.lattice import Lattice
 from pymatgen.analysis.graphs import StructureGraph
 from pymatgen.analysis import local_env
 
-from p_tqdm import p_umap#类似与map函数
+from networkx.algorithms.components import is_connected
+
+from sklearn.metrics import accuracy_score, recall_score, precision_score
+
+from torch_scatter import scatter
+
+from p_tqdm import p_umap
+
+from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
+
+from pyxtal.symmetry import Group
+from pyxtal import pyxtal
+
 
 # Tensor of unit cells. Assumes 27 cells in -1, 0, 1 offsets in the x and y dimensions
 # Note that differing from OCP, we have 27 offsets here because we are in 3D
@@ -76,6 +88,120 @@ chemical_symbols = [
 CrystalNN = local_env.CrystalNN(
     distance_cutoffs=None, x_diff_weight=-1, porous_adjustment=False)
 
+
+def build_crystal(crystal_str, niggli=True, primitive=False):
+    """Build crystal from cif string."""
+    crystal = Structure.from_str(crystal_str, fmt='cif')
+
+    if primitive:
+        crystal = crystal.get_primitive_structure()
+
+    if niggli:
+        crystal = crystal.get_reduced_structure()
+
+    canonical_crystal = Structure(
+        lattice=Lattice.from_parameters(*crystal.lattice.parameters),
+        species=crystal.species,
+        coords=crystal.frac_coords,
+        coords_are_cartesian=False,
+    )
+    # match is gaurantteed because cif only uses lattice params & frac_coords
+    # assert canonical_crystal.matches(crystal)
+    return canonical_crystal
+
+
+def get_symmetry_info(crystal, tol=0.01):
+    spga = SpacegroupAnalyzer(crystal, symprec=tol)
+    crystal = spga.get_refined_structure()
+    c = pyxtal()
+    try:
+        c.from_seed(crystal, tol=0.01)
+    except:
+        c.from_seed(crystal, tol=0.0001)
+    space_group = c.group.number
+    species = []
+    anchors = []
+    matrices = []
+    coords = []
+    for site in c.atom_sites:
+        specie = site.specie
+        anchor = len(matrices)
+        coord = site.position
+        for syms in site.wp:
+            species.append(specie)
+            matrices.append(syms.affine_matrix)
+            coords.append(syms.operate(coord))
+            anchors.append(anchor)
+    anchors = np.array(anchors)
+    matrices = np.array(matrices)
+    coords = np.array(coords) % 1.
+    sym_info = {
+        'anchors':anchors,
+        'wyckoff_ops':matrices,
+        'spacegroup':space_group
+    }
+    crystal = Structure(
+        lattice=Lattice.from_parameters(*np.array(c.lattice.get_para(degree=True))),
+        species=species,
+        coords=coords,
+        coords_are_cartesian=False,
+    )
+    return crystal, sym_info
+
+
+def build_crystal_graph(crystal, graph_method='crystalnn'):
+    """
+    """
+
+    if graph_method == 'crystalnn':
+        crystal_graph = StructureGraph.with_local_env_strategy(
+            crystal, CrystalNN)
+    elif graph_method == 'none':
+        pass
+    else:
+        raise NotImplementedError
+
+    frac_coords = crystal.frac_coords
+    atom_types = crystal.atomic_numbers
+    lattice_parameters = crystal.lattice.parameters
+    lengths = lattice_parameters[:3]
+    angles = lattice_parameters[3:]
+
+    assert np.allclose(crystal.lattice.matrix,
+                       lattice_params_to_matrix(*lengths, *angles))
+
+    edge_indices, to_jimages = [], []
+    if graph_method != 'none':
+        for i, j, to_jimage in crystal_graph.graph.edges(data='to_jimage'):
+            edge_indices.append([j, i])
+            to_jimages.append(to_jimage)
+            edge_indices.append([i, j])
+            to_jimages.append(tuple(-tj for tj in to_jimage))
+
+    atom_types = np.array(atom_types)
+    lengths, angles = np.array(lengths), np.array(angles)
+    edge_indices = np.array(edge_indices)
+    to_jimages = np.array(to_jimages)
+    num_atoms = atom_types.shape[0]
+
+    return frac_coords, atom_types, lengths, angles, edge_indices, to_jimages, num_atoms
+
+
+def abs_cap(val, max_abs_val=1):
+    """
+    Returns the value with its absolute value capped at max_abs_val.
+    Particularly useful in passing values to trignometric functions where
+    numerical errors may result in an argument > 1 being passed in.
+    https://github.com/materialsproject/pymatgen/blob/b789d74639aa851d7e5ee427a765d9fd5a8d1079/pymatgen/util/num.py#L15
+    Args:
+        val (float): Input value.
+        max_abs_val (float): The maximum absolute value for val. Defaults to 1.
+    Returns:
+        val if abs(val) < 1 else sign of val * max_abs_val.
+    """
+    return max(min(val, max_abs_val), -max_abs_val)
+
+
 def lattice_params_to_matrix(a, b, c, alpha, beta, gamma):
     """Converts lattice from abc, angles to matrix.
     https://github.com/materialsproject/pymatgen/blob/b789d74639aa851d7e5ee427a765d9fd5a8d1079/pymatgen/core/lattice.py#L311
@@ -130,11 +256,6 @@ def lattice_params_to_matrix_torch(lengths, angles):
     return torch.stack([vector_a, vector_b, vector_c], dim=1)
 
 
-def lengths_angles_to_volume(lengths, angles):
-    lattice = lattice_params_to_matrix_torch(lengths, angles)
-    return compute_volume(lattice)
-
-
 def compute_volume(batch_lattice):
     """Compute volume from batched lattice matrix
 
@@ -144,192 +265,46 @@ def compute_volume(batch_lattice):
     return torch.abs(torch.einsum('bi,bi->b', vector_a,
                                   torch.cross(vector_b, vector_c, dim=1)))
 
-def abs_cap(val, max_abs_val=1):
-    """
-    Returns the value with its absolute value capped at max_abs_val.
-    Particularly useful in passing values to trignometric functions where
-    numerical errors may result in an argument > 1 being passed in.
-    https://github.com/materialsproject/pymatgen/blob/b789d74639aa851d7e5ee427a765d9fd5a8d1079/pymatgen/util/num.py#L15
-    Args:
-        val (float): Input value.
-        max_abs_val (float): The maximum absolute value for val. Defaults to 1.
-    Returns:
-        val if abs(val) < 1 else sign of val * max_abs_val.
-    """
-    return max(min(val, max_abs_val), -max_abs_val)
+
+def lengths_angles_to_volume(lengths, angles):
+    lattice = lattice_params_to_matrix_torch(lengths, angles)
+    return compute_volume(lattice)
 
 
-def build_crystal(crystal_str, niggli=True, primitive=False):
-    """Build crystal from cif string."""
-    crystal = Structure.from_str(crystal_str, fmt='cif')
+def lattice_matrix_to_params(matrix):
+    lengths = np.sqrt(np.sum(matrix ** 2, axis=1)).tolist()
 
-    if primitive:
-        crystal = crystal.get_primitive_structure()
+    angles = np.zeros(3)
+    for i in range(3):
+        j = (i + 1) % 3
+        k = (i + 2) % 3
+        angles[i] = abs_cap(np.dot(matrix[j], matrix[k]) /
+                            (lengths[j] * lengths[k]))
+    angles = np.arccos(angles) * 180.0 / np.pi
+    a, b, c = lengths
+    alpha, beta, gamma = angles
+    return a, b, c, alpha, beta, gamma
 
-    if niggli:
-        crystal = crystal.get_reduced_structure()
+def lattice_matrix_to_params_torch(lattice):
+    a = torch.norm(lattice[:, 0, :], dim=1)
+    b = torch.norm(lattice[:, 1, :], dim=1)
+    c = torch.norm(lattice[:, 2, :], dim=1)
 
-    canonical_crystal = Structure(
-        lattice=Lattice.from_parameters(*crystal.lattice.parameters),
-        species=crystal.species,
-        coords=crystal.frac_coords,
-        coords_are_cartesian=False,
-    )
-    # match is gaurantteed because cif only uses lattice params & frac_coords
-    # assert canonical_crystal.matches(crystal)
-    return canonical_crystal
+    cos_alpha = torch.matmul(lattice[:, 1, :], lattice[:, 2, :].transpose(-1, -2)) / (b[:, None] * c[:, None])
+    cos_beta = torch.matmul(lattice[:, 0, :], lattice[:, 2, :].transpose(-1, -2)) / (a[:, None] * c[:, None])
+    cos_gamma = torch.matmul(lattice[:, 0, :], lattice[:, 1, :].transpose(-1, -2)) / (a[:, None] * b[:, None])
 
+    cos_alpha = torch.diag(cos_alpha)
+    cos_beta = torch.diag(cos_beta)
+    cos_gamma = torch.diag(cos_gamma)
 
-def build_crystal_graph(crystal, graph_method='crystalnn'):
-    """
-    """
+    alpha = torch.acos(cos_alpha) * 180.0 / np.pi
+    beta = torch.acos(cos_beta) * 180.0 / np.pi
+    gamma = torch.acos(cos_gamma) * 180.0 / np.pi
 
-    if graph_method == 'crystalnn':
-        crystal_graph = StructureGraph.with_local_env_strategy(
-            crystal, CrystalNN)
-    elif graph_method == 'none':
-        pass
-    else:
-        raise NotImplementedError
-
-    frac_coords = crystal.frac_coords
-    atom_types = crystal.atomic_numbers
-    lattice_parameters = crystal.lattice.parameters
-    lengths = lattice_parameters[:3]
-    angles = lattice_parameters[3:]
-
-    assert np.allclose(crystal.lattice.matrix,
-                       lattice_params_to_matrix(*lengths, *angles))
-
-    edge_indices, to_jimages = [], []
-    if graph_method != 'none':
-        for i, j, to_jimage in crystal_graph.graph.edges(data='to_jimage'):
-            edge_indices.append([j, i])
-            to_jimages.append(to_jimage)
-            edge_indices.append([i, j])
-            to_jimages.append(tuple(-tj for tj in to_jimage))
-
-    atom_types = np.array(atom_types)
-    lengths, angles = np.array(lengths), np.array(angles)
-    edge_indices = np.array(edge_indices)
-    to_jimages = np.array(to_jimages)
-    num_atoms = atom_types.shape[0]
-
-    return frac_coords, atom_types, lengths, angles, edge_indices, to_jimages, num_atoms
-
-
-
-def preprocess(input_file, num_workers, niggli, primitive, graph_method,
-               prop_list):
-    df = pd.read_csv(input_file)
-
-    def process_one(row, niggli, primitive, graph_method, prop_list):
-        crystal_str = row['cif']
-        crystal = build_crystal(
-            crystal_str, niggli=niggli, primitive=primitive)
-        # try:
-        #     graph_arrays = build_crystal_graph(crystal, graph_method)
-        # except Exception as e:
-            # print(row['material_id'])
-        graph_arrays = build_crystal_graph(crystal, graph_method)
-        properties = {k: row[k] for k in prop_list if k in row.keys()}
-        properties = {k: torch.Tensor([row[k]]).float() for k in prop_list if k in row.keys()}
-        # if 'formula' in row.keys():                              #11！！
-        #     properties.update({'raw_formula': row['formula']})   #!!!!
-
-        result_dict = {
-            'mp_id': row['material_id'],
-            'cif': crystal_str,
-            'graph_arrays': graph_arrays,
-        }
-        result_dict.update(properties)
-
-
-        return result_dict
-
-    unordered_results = p_umap(
-        process_one,
-        [df.iloc[idx] for idx in range(len(df))],
-        [niggli] * len(df),
-        [primitive] * len(df),
-        [graph_method] * len(df),
-        [prop_list] * len(df),
-        num_cpus=num_workers)
-
-    #graph_arrays: frac_coords, atom_types, lengths, angles, edge_indices, to_jimages, num_atoms
-    mpid_to_results = {result['mp_id']: result for result in unordered_results}
-    #处理数据的时候是并行处理的，为了避免bug，重新排序
-    ordered_results = [mpid_to_results[df.iloc[idx]['material_id']]
-                       for idx in range(len(df))]
-
-    return ordered_results
-
-
-def add_scaled_lattice_prop(data_list, lattice_scale_method):
-    for dict in data_list:
-        graph_arrays = dict['graph_arrays']
-        # the indexes are brittle if more objects are returned
-        lengths = graph_arrays[2]
-        angles = graph_arrays[3]
-        num_atoms = graph_arrays[-1]
-        assert lengths.shape[0] == angles.shape[0] == 3
-        assert isinstance(num_atoms, int)
-
-        if lattice_scale_method == 'scale_length':
-            lengths = lengths / float(num_atoms)**(1/3)#
-
-        dict['scaled_lattice'] = np.concatenate([lengths, angles])#为什么这个东西就直接被放入到了data_list里面
-
-
-def get_scaler_from_data_list(data_list, key):
-    targets = torch.tensor([d[key] for d in data_list])
-    scaler = StandardScalerTorch()
-    scaler.fit(targets)
-    return scaler
-
-def get_maxAmin_from_data_list(data_list, key):
-    targets = torch.tensor([d[key] for d in data_list])
-    return torch.max(targets), torch.min(targets)
-
-
-class StandardScalerTorch(object):
-    """Normalizes the targets of a dataset."""
-
-    def __init__(self, means=None, stds=None):
-        self.means = means
-        self.stds = stds
-
-    def fit(self, X):
-        X = torch.tensor(X, dtype=torch.float)
-        self.means = torch.mean(X, dim=0)
-        # https://github.com/pytorch/pytorch/issues/29372
-        self.stds = torch.std(X, dim=0, unbiased=False) + EPSILON
-
-    def transform(self, X):
-        X = torch.tensor(X, dtype=torch.float)
-        return (X - self.means) / self.stds
-
-    def inverse_transform(self, X):
-        X = torch.tensor(X, dtype=torch.float)
-        return X * self.stds + self.means
-
-    def match_device(self, tensor):
-        if self.means.device != tensor.device:
-            self.means = self.means.to(tensor.device)
-            self.stds = self.stds.to(tensor.device)
-
-    def copy(self):
-        return StandardScalerTorch(
-            means=self.means.clone().detach(),
-            stds=self.stds.clone().detach())
-
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}("
-            f"means: {self.means.tolist()}, "
-            f"stds: {self.stds.tolist()})"
-        )
-
+    lengths = torch.stack((a, b, c), dim=1)
+    angles = torch.stack((alpha, beta, gamma), dim=1)
+    return lengths, angles
 
 def frac_to_cart_coords(
     frac_coords,
@@ -690,52 +665,237 @@ def min_distance_sqr_pbc(cart_coords1, cart_coords2, lengths, angles,
     return return_list[0] if len(return_list) == 1 else return_list
 
 
+class StandardScalerTorch(object):
+    """Normalizes the targets of a dataset."""
+
+    def __init__(self, means=None, stds=None):
+        self.means = means
+        self.stds = stds
+
+    def fit(self, X):
+        X = torch.tensor(X, dtype=torch.float)
+        self.means = torch.mean(X, dim=0)
+        # https://github.com/pytorch/pytorch/issues/29372
+        self.stds = torch.std(X, dim=0, unbiased=False) + EPSILON
+
+    def transform(self, X):
+        X = torch.tensor(X, dtype=torch.float)
+        return (X - self.means) / self.stds
+
+    def inverse_transform(self, X):
+        X = torch.tensor(X, dtype=torch.float)
+        return X * self.stds + self.means
+
+    def match_device(self, tensor):
+        if self.means.device != tensor.device:
+            self.means = self.means.to(tensor.device)
+            self.stds = self.stds.to(tensor.device)
+
+    def copy(self):
+        return StandardScalerTorch(
+            means=self.means.clone().detach(),
+            stds=self.stds.clone().detach())
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"means: {self.means.tolist()}, "
+            f"stds: {self.stds.tolist()})"
+        )
+
+
+def get_scaler_from_data_list(data_list, key):
+    targets = torch.tensor([d[key] for d in data_list])
+    scaler = StandardScalerTorch()
+    scaler.fit(targets)
+    return scaler
+
+
+def process_one(row, niggli, primitive, graph_method, use_space_group, tol, prelo_prop_list):
+    crystal_str = row['cif']
+    crystal = build_crystal(
+        crystal_str, niggli=niggli, primitive=primitive)
+
+    result_dict = {}
+    if use_space_group:
+        crystal, sym_info = get_symmetry_info(crystal, tol=tol)
+        result_dict.update(sym_info)
+    else:
+        result_dict['spacegroup'] = 1
+    graph_arrays = build_crystal_graph(crystal, graph_method)
+    properties = {k: torch.Tensor([row[k]]).float() for k in prelo_prop_list if k in row.keys()}
+    result_dict.update({
+        'mp_id': row['material_id'],
+        'cif': crystal_str,
+        'graph_arrays': graph_arrays
+    })
+    result_dict.update(properties)
+    return result_dict
+
+def preprocess(input_file, num_workers, niggli, primitive, graph_method,
+                prelo_prop_list, use_space_group = False, tol=0.01):
+    df = pd.read_csv(input_file)
+
+    unordered_results = p_umap(
+        process_one,
+        [df.iloc[idx] for idx in range(len(df))],
+        [niggli] * len(df),
+        [primitive] * len(df),
+        [graph_method] * len(df),
+        [use_space_group] * len(df),
+        [tol] * len(df),
+        [prelo_prop_list] * len(df),
+        num_cpus=num_workers)
+
+    mpid_to_results = {result['mp_id']: result for result in unordered_results}
+    ordered_results = [mpid_to_results[df.iloc[idx]['material_id']]
+                       for idx in range(len(df))]
+
+    return ordered_results
+
+
+def preprocess_tensors(crystal_array_list, niggli, primitive, graph_method):
+    def process_one(batch_idx, crystal_array, niggli, primitive, graph_method):
+        frac_coords = crystal_array['frac_coords']
+        atom_types = crystal_array['atom_types']
+        lengths = crystal_array['lengths']
+        angles = crystal_array['angles']
+        crystal = Structure(
+            lattice=Lattice.from_parameters(
+                *(lengths.tolist() + angles.tolist())),
+            species=atom_types,
+            coords=frac_coords,
+            coords_are_cartesian=False)
+        graph_arrays = build_crystal_graph(crystal, graph_method)
+        result_dict = {
+            'batch_idx': batch_idx,
+            'graph_arrays': graph_arrays,
+        }
+        return result_dict
+
+    unordered_results = p_umap(
+        process_one,
+        list(range(len(crystal_array_list))),
+        crystal_array_list,
+        [niggli] * len(crystal_array_list),
+        [primitive] * len(crystal_array_list),
+        [graph_method] * len(crystal_array_list),
+        num_cpus=30,
+    )
+    ordered_results = list(
+        sorted(unordered_results, key=lambda x: x['batch_idx']))
+    return ordered_results
+
+
+def add_scaled_lattice_prop(data_list, lattice_scale_method):
+    for dict in data_list:
+        graph_arrays = dict['graph_arrays']
+        # the indexes are brittle if more objects are returned
+        lengths = graph_arrays[2]
+        angles = graph_arrays[3]
+        num_atoms = graph_arrays[-1]
+        assert lengths.shape[0] == angles.shape[0] == 3
+        assert isinstance(num_atoms, int)
+
+        if lattice_scale_method == 'scale_length':
+            lengths = lengths / float(num_atoms)**(1/3)
+
+        dict['scaled_lattice'] = np.concatenate([lengths, angles])
+
+
 def mard(targets, preds):
     """Mean absolute relative difference."""
     assert torch.all(targets > 0.)
     return torch.mean(torch.abs(targets - preds) / targets)
 
 
-class GaussianDistance(object):
+def batch_accuracy_precision_recall(
+    pred_edge_probs,
+    edge_overlap_mask,
+    num_bonds
+):
+    if (pred_edge_probs is None and edge_overlap_mask is None and
+            num_bonds is None):
+        return 0., 0., 0.
+    pred_edges = pred_edge_probs.max(dim=1)[1].float()
+    target_edges = edge_overlap_mask.float()
+
+    start_idx = 0
+    accuracies, precisions, recalls = [], [], []
+    for num_bond in num_bonds.tolist():
+        pred_edge = pred_edges.narrow(
+            0, start_idx, num_bond).detach().cpu().numpy()
+        target_edge = target_edges.narrow(
+            0, start_idx, num_bond).detach().cpu().numpy()
+
+        accuracies.append(accuracy_score(target_edge, pred_edge))
+        precisions.append(precision_score(
+            target_edge, pred_edge, average='binary'))
+        recalls.append(recall_score(target_edge, pred_edge, average='binary'))
+
+        start_idx = start_idx + num_bond
+
+    return np.mean(accuracies), np.mean(precisions), np.mean(recalls)
+
+
+class StandardScaler:
+    """A :class:`StandardScaler` normalizes the features of a dataset.
+    When it is fit on a dataset, the :class:`StandardScaler` learns the
+        mean and standard deviation across the 0th axis.
+    When transforming a dataset, the :class:`StandardScaler` subtracts the
+        means and divides by the standard deviations.
     """
-    Expands the distance by Gaussian basis.
 
-    Unit: angstrom
-    """
-    def __init__(self, dmin, dmax, step, var=None):
+    def __init__(self, means=None, stds=None, replace_nan_token=None):
         """
-        Parameters
-        ----------
-
-        dmin: float
-          Minimum interatomic distance
-        dmax: float
-          Maximum interatomic distance
-        step: float
-          Step size for the Gaussian filter
+        :param means: An optional 1D numpy array of precomputed means.
+        :param stds: An optional 1D numpy array of precomputed standard deviations.
+        :param replace_nan_token: A token to use to replace NaN entries in the features.
         """
-        assert dmin < dmax
-        assert dmax - dmin > step
-        self.filter = np.arange(dmin, dmax+step, step)
-        if var is None:
-            var = step
-        self.var = var
+        self.means = means
+        self.stds = stds
+        self.replace_nan_token = replace_nan_token
 
-    def expand(self, distances):
+    def fit(self, X):
         """
-        Apply Gaussian disntance filter to a numpy distance array
-
-        Parameters
-        ----------
-
-        distance: np.array shape n-d array
-          A distance matrix of any shape
-
-        Returns
-        -------
-        expanded_distance: shape (n+1)-d array
-          Expanded distance matrix with the last dimension of length
-          len(self.filter)
+        Learns means and standard deviations across the 0th axis of the data :code:`X`.
+        :param X: A list of lists of floats (or None).
+        :return: The fitted :class:`StandardScaler` (self).
         """
-        return np.exp(-(distances[..., np.newaxis] - self.filter)**2 /
-                      self.var**2)
+        X = np.array(X).astype(float)
+        self.means = np.nanmean(X, axis=0)
+        self.stds = np.nanstd(X, axis=0)
+        self.means = np.where(np.isnan(self.means),
+                              np.zeros(self.means.shape), self.means)
+        self.stds = np.where(np.isnan(self.stds),
+                             np.ones(self.stds.shape), self.stds)
+        self.stds = np.where(self.stds == 0, np.ones(
+            self.stds.shape), self.stds)
+
+        return self
+
+    def transform(self, X):
+        """
+        Transforms the data by subtracting the means and dividing by the standard deviations.
+        :param X: A list of lists of floats (or None).
+        :return: The transformed data with NaNs replaced by :code:`self.replace_nan_token`.
+        """
+        X = np.array(X).astype(float)
+        transformed_with_nan = (X - self.means) / self.stds
+        transformed_with_none = np.where(
+            np.isnan(transformed_with_nan), self.replace_nan_token, transformed_with_nan)
+
+        return transformed_with_none
+
+    def inverse_transform(self, X):
+        """
+        Performs the inverse transformation by multiplying by the standard deviations and adding the means.
+        :param X: A list of lists of floats.
+        :return: The inverse transformed data with NaNs replaced by :code:`self.replace_nan_token`.
+        """
+        X = np.array(X).astype(float)
+        transformed_with_nan = X * self.stds + self.means
+        transformed_with_none = np.where(
+            np.isnan(transformed_with_nan), self.replace_nan_token, transformed_with_nan)
+
+        return transformed_with_none

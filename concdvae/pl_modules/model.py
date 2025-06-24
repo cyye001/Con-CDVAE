@@ -1,15 +1,15 @@
 from typing import Any, Dict
-import sys
+
 import hydra
 import math
 import numpy as np
 import omegaconf
 import torch
+import pytorch_lightning as pl
 import torch.nn as nn
 from torch.nn import functional as F
 from torch_scatter import scatter
 from tqdm import tqdm
-from collections import namedtuple
 
 from concdvae.common.data_utils import (
     EPSILON, cart_to_frac_coords, mard, lengths_angles_to_volume,
@@ -49,11 +49,27 @@ def build_mlp(in_dim, hidden_dim, fc_num_layers, out_dim, drop=-1, norm=True):
     return nn.Sequential(*mods)
 
 
-class CDVAE(nn.Module):
+class BaseModule(pl.LightningModule):
     def __init__(self, *args, **kwargs) -> None:
-        super(CDVAE, self).__init__()
-        MyDict = namedtuple("MyDict", kwargs.keys())
-        self.hparams = MyDict(**kwargs)
+        super().__init__()
+        # populate self.hparams with args and kwargs automagically!
+        self.save_hyperparameters()
+
+    def configure_optimizers(self):
+        opt = hydra.utils.instantiate(
+            self.hparams.optim.optimizer, params=self.parameters(), _convert_="partial"
+        )
+        if not self.hparams.optim.use_lr_scheduler:
+            return [opt]
+        scheduler = hydra.utils.instantiate(
+            self.hparams.optim.lr_scheduler, optimizer=opt
+        )
+        return {"optimizer": opt, "lr_scheduler": scheduler, "monitor": "val_loss"}
+
+
+class CDVAE(BaseModule):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
         conditions_predict = []
         self.conditions_name = []
@@ -93,10 +109,10 @@ class CDVAE(nn.Module):
         self.fc_composition = build_mlp(self.hparams.latent_dim, self.hparams.hidden_dim,
                                         self.hparams.fc_num_layers, MAX_ATOMIC_NUM)
 
-        # for property prediction.
-        if self.hparams.predict_property:
-            self.fc_property = build_mlp(self.hparams.latent_dim, self.hparams.hidden_dim,
-                                         self.hparams.fc_num_layers, 1)
+        # # for property prediction.
+        # if self.hparams.predict_property:
+        #     self.fc_property = build_mlp(self.hparams.latent_dim, self.hparams.hidden_dim,
+        #                                  self.hparams.fc_num_layers, 1)
 
         sigmas = torch.tensor(np.exp(np.linspace(
             np.log(self.hparams.sigma_begin),
@@ -112,18 +128,18 @@ class CDVAE(nn.Module):
 
         self.type_sigmas = nn.Parameter(type_sigmas, requires_grad=False)
 
-        self.embedding = torch.zeros(100, 92)
-        for i in range(100):
-            self.embedding[i] = torch.tensor(KHOT_EMBEDDINGS[i + 1])
+        # self.embedding = torch.zeros(100, 92)
+        # for i in range(100):
+        #     self.embedding[i] = torch.tensor(KHOT_EMBEDDINGS[i + 1])
 
         # obtain from datamodule.
         self.lattice_scaler = None
-        self.scaler = None
+        # self.scaler = None
 
-        self.max_prop = None
-        self.min_prop = None
+        # self.max_prop = None
+        # self.min_prop = None
 
-        self.device = 'cpu'
+        # self.device = 'cpu'
 
     def reparameterize(self, mu, logvar):
         """
@@ -141,7 +157,9 @@ class CDVAE(nn.Module):
         """
         encode crystal structures to latents.
         """
-        hidden = self.encoder(batch)
+        hidden = self.encoder(batch)  #TODO smoth it
+        if self.hparams.smooth == True:
+            hidden = torch.tanh(hidden)
         mu = self.fc_mu(hidden)
         log_var = self.fc_var(hidden)
         z = self.reparameterize(mu, log_var)
@@ -170,7 +188,7 @@ class CDVAE(nn.Module):
 
 
     def forward(self, batch, teacher_forcing, training):
-
+        # print('here is batch:',batch,flush=True)
         condition_emb = self.condition_model(batch)
 
         # hacky way to resolve the NaN issue. Will need more careful debugging later.
@@ -277,9 +295,9 @@ class CDVAE(nn.Module):
     def predict_num_atoms(self, z):
         return self.fc_num_atoms(z)
 
-    def predict_property(self, z):
-        self.scaler.match_device(z)
-        return self.scaler.inverse_transform(self.fc_property(z))
+    # def predict_property(self, z):
+    #     self.scaler.match_device(z)
+    #     return self.scaler.inverse_transform(self.fc_property(z))
 
     def predict_lattice(self, z, num_atoms):
         self.lattice_scaler.match_device(z)
@@ -437,6 +455,40 @@ class CDVAE(nn.Module):
             })
 
         return log_dict, loss
+    
+
+    def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
+        teacher_forcing = (
+            self.current_epoch <= self.hparams.teacher_forcing_max_epoch)
+        outputs = self(batch, teacher_forcing, training=True)
+        log_dict, loss = self.compute_stats(batch, outputs, prefix='train')
+        self.log_dict(
+            log_dict,
+            on_step=True,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        return loss
+
+    def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
+        outputs = self(batch, teacher_forcing=False, training=False)
+        log_dict, loss = self.compute_stats(batch, outputs, prefix='val')
+        self.log_dict(
+            log_dict,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+        )
+        return loss
+
+    def test_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
+        outputs = self(batch, teacher_forcing=False, training=False)
+        log_dict, loss = self.compute_stats(batch, outputs, prefix='test')
+        self.log_dict(
+            log_dict,
+        )
+        return loss
+    
 
     @torch.no_grad()
     def langevin_dynamics(self, z, ld_kwargs, gt_num_atoms=None, gt_atom_types=None):

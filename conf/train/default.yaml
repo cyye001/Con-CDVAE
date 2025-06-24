@@ -1,12 +1,16 @@
 # reproducibility
-deterministic: False
+deterministic: True
 random_seed: 42
-
+use_exit: False
 # training
 
 pl_trainer:
   fast_dev_run: False # Enable this for debug purposes
-  gpus: 1
+  devices: 1
+  # gpu: 1
+  strategy: 'auto'
+  accelerator: 'auto'
+
   precision: 32
   # max_steps: 10000
   max_epochs: ${data.train_max_epochs}
@@ -15,6 +19,9 @@ pl_trainer:
   gradient_clip_val: 0.5
   gradient_clip_algorithm: value
   profiler: simple
+  use_distributed_sampler: True
+  log_every_n_steps: 1000000000
+  enable_progress_bar: True
 
 monitor_metric: 'val_loss'
 monitor_metric_mode: 'min'
@@ -26,3 +33,4 @@ early_stopping:
 model_checkpoints:
   save_top_k: 1
   verbose: False
+  save_last: True

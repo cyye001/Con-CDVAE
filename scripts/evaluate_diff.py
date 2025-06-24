@@ -23,8 +23,6 @@ import torch.nn.functional as F
 
 from eval_utils import load_model
 from condition_diff_z import condition_diff_z
-from concdvae.common.data_utils import GaussianDistance
-from concdvae.pl_data.datamodule import worker_init_fn
 from concdvae.pl_data.dataset import AtomCustomJSONInitializer, formula2atomnums
 
 def generation(model, conz_model, ld_kwargs, num_batches_to_sample, num_samples_per_z, #GDF,
@@ -213,7 +211,7 @@ def main(args):
 
     if torch.cuda.is_available():
         model.to('cuda')
-        model.device = 'cuda'
+        # model.device = 'cuda'
         conz_model.to('cuda')
         conz_model.device = 'cuda'
 

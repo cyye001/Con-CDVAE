@@ -1,0 +1,217 @@
+data:
+  root_path: ${oc.env:PROJECT_ROOT}/data/mp_20
+  prelo_prop:
+  - formation_energy_per_atom
+  - band_gap
+  - e_above_hull
+  prop:
+  - formation_energy_per_atom
+  num_targets: 1
+  niggli: true
+  primitive: false
+  graph_method: crystalnn
+  lattice_scale_method: scale_length
+  preprocess_workers: 30
+  readout: mean
+  max_atoms: 20
+  otf_graph: false
+  eval_model_name: mp20
+  train_max_epochs: 500
+  early_stopping_patience: 100000
+  teacher_forcing_max_epoch: 200
+  n_delta: 40
+  tolerance: 0.1
+  use_space_group: false
+  load_old: true
+  use_pos_index: false
+  datamodule:
+    _target_: concdvae.pl_data.datamodule.CrystDataModule
+    datasets:
+      train:
+        _target_: concdvae.pl_data.dataset.CrystDataset
+        name: Formation energy train
+        path: ${data.root_path}/train.csv
+        prop: ${data.prop}
+        niggli: ${data.niggli}
+        primitive: ${data.primitive}
+        graph_method: ${data.graph_method}
+        lattice_scale_method: ${data.lattice_scale_method}
+        preprocess_workers: ${data.preprocess_workers}
+        save_path: ${data.root_path}/train_data.pt
+        tolerance: ${data.tolerance}
+        use_space_group: ${data.use_space_group}
+        use_pos_index: ${data.use_pos_index}
+        load_old: ${data.load_old}
+        prelo_prop: ${data.prelo_prop}
+      val:
+      - _target_: concdvae.pl_data.dataset.CrystDataset
+        name: Formation energy val
+        path: ${data.root_path}/val.csv
+        prop: ${data.prop}
+        niggli: ${data.niggli}
+        primitive: ${data.primitive}
+        graph_method: ${data.graph_method}
+        lattice_scale_method: ${data.lattice_scale_method}
+        preprocess_workers: ${data.preprocess_workers}
+        save_path: ${data.root_path}/val_data.pt
+        tolerance: ${data.tolerance}
+        use_space_group: ${data.use_space_group}
+        use_pos_index: ${data.use_pos_index}
+        load_old: ${data.load_old}
+        prelo_prop: ${data.prelo_prop}
+      test:
+      - _target_: concdvae.pl_data.dataset.CrystDataset
+        name: Formation energy test
+        path: ${data.root_path}/test.csv
+        prop: ${data.prop}
+        niggli: ${data.niggli}
+        primitive: ${data.primitive}
+        graph_method: ${data.graph_method}
+        lattice_scale_method: ${data.lattice_scale_method}
+        preprocess_workers: ${data.preprocess_workers}
+        save_path: ${data.root_path}/test_data.pt
+        tolerance: ${data.tolerance}
+        use_space_group: ${data.use_space_group}
+        use_pos_index: ${data.use_pos_index}
+        load_old: ${data.load_old}
+        prelo_prop: ${data.prelo_prop}
+    num_workers:
+      train: 0
+      val: 0
+      test: 0
+    batch_size:
+      train: 256
+      val: 256
+      test: 256
+logging:
+  val_check_interval: 1
+  progress_bar_refresh_rate: 20
+  csvlogger:
+    name: ${expname}
+  lr_monitor:
+    logging_interval: step
+    log_momentum: false
+model:
+  encoder:
+    _target_: concdvae.pl_modules.gnn.DimeNetPlusPlusWrap
+    num_targets: ${data.num_targets}
+    hidden_channels: 128
+    num_blocks: 4
+    int_emb_size: 64
+    basis_emb_size: 8
+    out_emb_channels: 256
+    num_spherical: 7
+    num_radial: 6
+    otf_graph: ${data.otf_graph}
+    cutoff: 7.0
+    max_num_neighbors: 20
+    envelope_exponent: 5
+    num_before_skip: 1
+    num_after_skip: 2
+    num_output_layers: 3
+    readout: ${data.readout}
+  decoder:
+    _target_: concdvae.pl_modules.decoder.GemNetTDecoder
+    hidden_dim: 128
+    latent_dim: ${model.latent_dim}
+    time_emb_dim: ${model.time_emb_dim}
+    max_neighbors: ${model.max_neighbors}
+    radius: ${model.radius}
+    scale_file: ${oc.env:PROJECT_ROOT}/concdvae/pl_modules/gemnet/gemnet-dT.json
+  conditionmodel:
+    _target_: concdvae.pl_modules.ConditionModel.ConditioningModule
+    n_features: 128
+    n_layers: 2
+    condition_embeddings:
+    - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
+      condition_name: formation_energy_per_atom
+      condition_min: -6.0
+      condition_max: 1.0
+      grid_spacing: 0.5
+      n_features: 64
+      n_layers: 3
+  conditionpre:
+    condition_predict:
+    - _target_: concdvae.pl_modules.PreCondition.ScalarConditionPredict
+      condition_name: formation_energy_per_atom
+      condition_min: -6.0
+      condition_max: 1.0
+      latent_dim: ${model.latent_dim}
+      hidden_dim: 256
+      out_dim: 1
+      n_layers: 2
+  _target_: concdvae.pl_modules.model.CDVAE
+  hidden_dim: 256
+  latent_dim: 256
+  time_emb_dim: 64
+  fc_num_layers: 1
+  max_atoms: ${data.max_atoms}
+  cost_natom: 1.0
+  cost_coord: 10.0
+  cost_type: 1.0
+  cost_lattice: 10.0
+  cost_composition: 1.0
+  cost_edge: 10.0
+  cost_property: 3.0
+  beta: 0.01
+  teacher_forcing_lattice: true
+  teacher_forcing_max_epoch: ${data.teacher_forcing_max_epoch}
+  max_neighbors: 20
+  radius: 9.0
+  sigma_begin: 10.0
+  sigma_end: 0.01
+  type_sigma_begin: 5.0
+  type_sigma_end: 0.01
+  num_noise_level: 50
+  predict_property: true
+  n_delta: 40
+  smooth: true
+optim:
+  optimizer:
+    _target_: torch.optim.Adam
+    lr: 0.001
+    betas:
+    - 0.9
+    - 0.999
+    eps: 1.0e-08
+    weight_decay: 0
+  use_lr_scheduler: true
+  lr_scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    factor: 0.6
+    patience: 30
+    min_lr: 0.0001
+train:
+  deterministic: true
+  random_seed: 42
+  use_exit: false
+  pl_trainer:
+    fast_dev_run: false
+    devices: 2
+    strategy: ddp_find_unused_parameters_true
+    accelerator: gpu
+    precision: 32
+    max_epochs: ${data.train_max_epochs}
+    accumulate_grad_batches: 1
+    num_sanity_val_steps: 2
+    gradient_clip_val: 0.5
+    gradient_clip_algorithm: value
+    profiler: simple
+    use_distributed_sampler: true
+    log_every_n_steps: 50
+    enable_progress_bar: false
+  monitor_metric: val_loss
+  monitor_metric_mode: min
+  early_stopping:
+    patience: ${data.early_stopping_patience}
+    verbose: false
+  model_checkpoints:
+    save_top_k: 1
+    verbose: false
+    save_last: true
+expname: mp20
+core:
+  version: 0.0.1
+  tags:
+  - ${now:%Y-%m-%d}
+accelerator: cpu

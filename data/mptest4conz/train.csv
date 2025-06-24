@@ -1,4 +1,4 @@
-material_id,formula,cif,bandgap,formation,e_above_hull,a,b,c,alpha,beta,gamma,density,coor_number,n_atom,spacegroup,crystal_system
+material_id,formula,cif,band_gap,formation_energy_per_atom,e_above_hull,a,b,c,alpha,beta,gamma,density,coor_number,n_atom,spacegroup,crystal_system
 mp-865981,TmMgHg2,"# generated using pymatgen
 data_TmMgHg2
 _symmetry_space_group_name_H-M   'P 1'

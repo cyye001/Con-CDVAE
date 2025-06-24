@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import List
 import sys
 import os
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -13,9 +14,60 @@ import omegaconf
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
-from concdvae.common.utils import PROJECT_ROOT, param_statistics
-from concdvae.PT_train.training import train
+import hydra
+import numpy as np
+import torch
+import omegaconf
+import pytorch_lightning as pl
+from hydra.core.hydra_config import HydraConfig
+from omegaconf import DictConfig, OmegaConf
+from pytorch_lightning import seed_everything, Callback
+from pytorch_lightning.callbacks import (
+    EarlyStopping,
+    LearningRateMonitor,
+    ModelCheckpoint,
+)
+from pytorch_lightning.loggers import CSVLogger
 
+from concdvae.common.utils import PROJECT_ROOT, log_hyperparameters
+
+
+def build_callbacks(cfg: DictConfig) -> List[Callback]:
+    callbacks: List[Callback] = []
+
+    if "lr_monitor" in cfg.logging:
+        hydra.utils.log.info("Adding callback <LearningRateMonitor>")
+        callbacks.append(
+            LearningRateMonitor(
+                logging_interval=cfg.logging.lr_monitor.logging_interval,
+                log_momentum=cfg.logging.lr_monitor.log_momentum,
+            )
+        )
+
+    if "early_stopping" in cfg.train:
+        hydra.utils.log.info("Adding callback <EarlyStopping>")
+        callbacks.append(
+            EarlyStopping(
+                monitor=cfg.train.monitor_metric,
+                mode=cfg.train.monitor_metric_mode,
+                patience=cfg.train.early_stopping.patience,
+                verbose=cfg.train.early_stopping.verbose,
+            )
+        )
+
+    if "model_checkpoints" in cfg.train:
+        hydra.utils.log.info("Adding callback <ModelCheckpoint>")
+        callbacks.append(
+            ModelCheckpoint(
+                dirpath=Path(HydraConfig.get().run.dir),
+                monitor=cfg.train.monitor_metric,
+                mode=cfg.train.monitor_metric_mode,
+                save_top_k=cfg.train.model_checkpoints.save_top_k,
+                verbose=cfg.train.model_checkpoints.verbose,
+            )
+        )
+
+    return callbacks
 
 
 def run(cfg: DictConfig) -> None:
@@ -24,6 +76,7 @@ def run(cfg: DictConfig) -> None:
     :param cfg: run configuration, defined by Hydra in /conf
     """
     if cfg.train.deterministic:
+        seed_everything(cfg.train.random_seed)
         np.random.seed(cfg.train.random_seed)
         random.seed(cfg.train.random_seed)
         torch.manual_seed(cfg.train.random_seed)
@@ -34,84 +87,73 @@ def run(cfg: DictConfig) -> None:
 
     # Hydra run directory
     hydra_dir = Path(HydraConfig.get().run.dir)
-    
+
     # Instantiate datamodule
     hydra.utils.log.info(f"Instantiating <{cfg.data.datamodule._target_}>")
-    datamodule = hydra.utils.instantiate(
+    datamodule: pl.LightningDataModule = hydra.utils.instantiate(
         cfg.data.datamodule, _recursive_=False
     )
 
     # Instantiate model
     hydra.utils.log.info(f"Instantiating <{cfg.model._target_}>")
-    model = hydra.utils.instantiate(
+    model: pl.LightningModule = hydra.utils.instantiate(
         cfg.model,
         optim=cfg.optim,
         data=cfg.data,
         logging=cfg.logging,
         _recursive_=False,
     )
-    param_statistics(model)
 
-    best_loss_old = None
-    if(cfg.train.PT_train.start_epochs>1):
-        filename = 'model_' + cfg.expname + '.pth'
-        model_root = Path(hydra_dir) / filename
-        if os.path.exists(model_root):
-            checkpoint = torch.load(model_root, map_location=torch.device('cpu'))
-            model_state_dict = checkpoint['model']
-            model.load_state_dict(model_state_dict)
-            cfg.train.PT_train.start_epochs = int(checkpoint['epoch'])
-            best_loss_old = checkpoint['val_loss']
-
-            print('use old model with loss=',best_loss_old,',and epoch = ',cfg.train.PT_train.start_epochs)
-
-
+    # Pass scaler from datamodule to model
+    hydra.utils.log.info(f"Passing scaler from datamodule to model <{datamodule.scaler}>")
     model.lattice_scaler = datamodule.lattice_scaler.copy()
+    # model.scaler = datamodule.scaler.copy()
     torch.save(datamodule.lattice_scaler, hydra_dir / 'lattice_scaler.pt')
-
-    if cfg.accelerator == 'DDP':
-        local_rank = torch.distributed.get_rank()
-        torch.cuda.set_device(local_rank)
-        device = torch.device('cuda', local_rank)
-        model.device = device
-        model.cuda()
-        model = torch.nn.parallel.DistributedDataParallel(model, find_unused_parameters=True)
-    elif cfg.accelerator == 'gpu':
-        model.device = 'cuda'
-        model.cuda()
-
-    for name, param in model.named_parameters():
-        print(f"Parameter: {name}, Device: {param.device}", file=sys.stdout)
-
+    # torch.save(datamodule.scaler, hydra_dir / 'prop_scaler.pt')
+    # Instantiate the callbacks
+    callbacks: List[Callback] = build_callbacks(cfg=cfg)
 
     # Store the YaML config separately into the wandb dir
     yaml_conf: str = OmegaConf.to_yaml(cfg=cfg)
     (hydra_dir / "hparams.yaml").write_text(yaml_conf)
 
-    optimizer = hydra.utils.instantiate(
-        cfg.optim.optimizer, params=model.parameters(), _convert_="partial"
+    # Load checkpoint (if exist)
+    ckpts = list(hydra_dir.glob('*.ckpt'))
+    if len(ckpts) > 0 and cfg.train.use_exit:
+        ckpt_epochs = np.array([int(ckpt.parts[-1].split('-')[0].split('=')[1]) for ckpt in ckpts])
+        ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
+        hydra.utils.log.info(f"found checkpoint: {ckpt}")
+    else:
+        ckpt = None
+
+    logger = None
+    if "csvlogger" in cfg.logging:
+        logger = CSVLogger(save_dir=hydra_dir, name=cfg.logging.csvlogger.name)
+
+    hydra.utils.log.info("Instantiating the Trainer")
+    trainer = pl.Trainer(
+        default_root_dir=hydra_dir,
+        logger=logger,
+        callbacks=callbacks,
+        deterministic=cfg.train.deterministic,
+        check_val_every_n_epoch=cfg.logging.val_check_interval,
+        **cfg.train.pl_trainer,
     )
-    scheduler = hydra.utils.instantiate(
-        cfg.optim.lr_scheduler, optimizer=optimizer
-    )
+    log_hyperparameters(trainer=trainer, model=model, cfg=cfg)
 
-    hydra.utils.log.info('Start Train')
-    test_losses, train_loss_epoch, val_loss_epoch = train(cfg, model, datamodule, optimizer, scheduler, hydra_dir, best_loss_old)
+    hydra.utils.log.info("Starting training!")
+    trainer.fit(model=model, datamodule=datamodule, ckpt_path=ckpt)
+    # test_dataloaders = datamodule.test_dataloader()
+    hydra.utils.log.info("Starting testing!")
+    trainer.test(datamodule=datamodule)
 
-
-    hydra.utils.log.info('END')
+    hydra.utils.log.info("End")
+    return 0
 
 
 @hydra.main(config_path=str(PROJECT_ROOT / "conf"), config_name="default")
 def main(cfg: omegaconf.DictConfig):
-    #YCY
-    if cfg.accelerator == 'DDP':
-        torch.distributed.init_process_group(backend='nccl')
-        local_rank = torch.distributed.get_rank()
-        print(local_rank)
-        torch.cuda.set_device(local_rank)
-        device = torch.device('cuda', local_rank)
-
+    # print(cfg)
     run(cfg)
 
 
