@@ -695,7 +695,29 @@ class StandardScalerTorch(object):
         return StandardScalerTorch(
             means=self.means.clone().detach(),
             stds=self.stds.clone().detach())
+    
+    def save_to_txt(self, filepath='StandardScaler.txt'):
+        """Save means and stds as float values to a text file."""
+        with open(filepath, "w") as f:
+            f.write("# means\n")
+            f.write(" ".join([f"{v:.8f}" for v in self.means.tolist()]) + "\n")
+            f.write("# stds\n")
+            f.write(" ".join([f"{v:.8f}" for v in self.stds.tolist()]) + "\n")
 
+    @classmethod
+    def load_from_txt(cls, filepath):
+        """Load means and stds from a text file and return a new StandardScalerTorch."""
+        with open(filepath, "r") as f:
+            lines = f.readlines()
+            means = list(map(float, lines[1].strip().split()))
+            stds = list(map(float, lines[3].strip().split()))
+            print(f'means: {means}')
+            print(f'stds: {stds}')
+            return cls(
+                means=torch.tensor(means, dtype=torch.float),
+                stds=torch.tensor(stds, dtype=torch.float)
+            )
+        
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("

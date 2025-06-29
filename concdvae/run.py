@@ -64,6 +64,7 @@ def build_callbacks(cfg: DictConfig) -> List[Callback]:
                 mode=cfg.train.monitor_metric_mode,
                 save_top_k=cfg.train.model_checkpoints.save_top_k,
                 verbose=cfg.train.model_checkpoints.verbose,
+                save_last=cfg.train.model_checkpoints.save_last
             )
         )
 
@@ -80,8 +81,7 @@ def run(cfg: DictConfig) -> None:
         np.random.seed(cfg.train.random_seed)
         random.seed(cfg.train.random_seed)
         torch.manual_seed(cfg.train.random_seed)
-        # torch.backends.cudnn.deterministic = True
-        if(cfg.accelerator != 'cpu'):
+        if torch.cuda.is_available():
             torch.cuda.manual_seed(cfg.train.random_seed)
             torch.cuda.manual_seed_all(cfg.train.random_seed)
 
@@ -107,9 +107,9 @@ def run(cfg: DictConfig) -> None:
     # Pass scaler from datamodule to model
     hydra.utils.log.info(f"Passing scaler from datamodule to model <{datamodule.scaler}>")
     model.lattice_scaler = datamodule.lattice_scaler.copy()
-    # model.scaler = datamodule.scaler.copy()
     torch.save(datamodule.lattice_scaler, hydra_dir / 'lattice_scaler.pt')
-    # torch.save(datamodule.scaler, hydra_dir / 'prop_scaler.pt')
+    datamodule.lattice_scaler.save_to_txt(hydra_dir / "lattice_scaler.txt")
+    
     # Instantiate the callbacks
     callbacks: List[Callback] = build_callbacks(cfg=cfg)
 
@@ -120,9 +120,21 @@ def run(cfg: DictConfig) -> None:
     # Load checkpoint (if exist)
     ckpts = list(hydra_dir.glob('*.ckpt'))
     if len(ckpts) > 0 and cfg.train.use_exit:
-        ckpt_epochs = np.array([int(ckpt.parts[-1].split('-')[0].split('=')[1]) for ckpt in ckpts])
-        ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
-        hydra.utils.log.info(f"found checkpoint: {ckpt}")
+        last_ckpt = [ckpt for ckpt in ckpts if ckpt.name == "last.ckpt"]
+        if last_ckpt:
+            ckpt = str(last_ckpt[0])
+            hydra.utils.log.info(f"found last checkpoint: {ckpt}")
+        else:
+            try:
+                ckpt_epochs = np.array([
+                    int(ckpt.stem.split('-')[0].split('=')[1])
+                    for ckpt in ckpts if "epoch=" in ckpt.stem
+                ])
+                ckpt = str(ckpts[np.argmax(ckpt_epochs)])
+                hydra.utils.log.info(f"found checkpoint by max epoch: {ckpt}")
+            except Exception as e:
+                hydra.utils.log.warning(f"failed to parse epoch checkpoints: {e}")
+                ckpt = None
     else:
         ckpt = None
 

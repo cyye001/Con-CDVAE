@@ -19,7 +19,6 @@ hydra:
       WANDB_START_METHOD: thread
       WANDB_DIR: ${oc.env:WABDB_DIR}
 
-accelerator: 'cpu'
 
 defaults:
   - data: default

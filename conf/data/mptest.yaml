@@ -1,6 +1,6 @@
 root_path: ${oc.env:PROJECT_ROOT}/data/mptest
 prelo_prop: ['formation_energy_per_atom', 'band_gap', 'FM_type', 'BG_type','CS_type']
-prop: ['formation_energy_per_atom']
+prop: ['formation_energy_per_atom','band_gap']
 num_targets: 1
 # prop: scaled_lattice
 # num_targets: 6
@@ -15,7 +15,7 @@ otf_graph: false
 eval_model_name: mp20
 
 
-train_max_epochs: 30
+train_max_epochs: 3
 early_stopping_patience: 100000
 teacher_forcing_max_epoch: 15
 
