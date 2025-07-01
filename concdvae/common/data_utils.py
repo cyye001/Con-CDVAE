@@ -88,6 +88,7 @@ chemical_symbols = [
 CrystalNN = local_env.CrystalNN(
     distance_cutoffs=None, x_diff_weight=-1, porous_adjustment=False)
 
+min_distance_nn = local_env.MinimumDistanceNN()
 
 def build_crystal(crystal_str, niggli=True, primitive=False):
     """Build crystal from cif string."""
@@ -156,6 +157,8 @@ def build_crystal_graph(crystal, graph_method='crystalnn'):
     if graph_method == 'crystalnn':
         crystal_graph = StructureGraph.with_local_env_strategy(
             crystal, CrystalNN)
+    elif graph_method == 'mindistance':
+        crystal_graph = StructureGraph.with_local_env_strategy(crystal, min_distance_nn)
     elif graph_method == 'none':
         pass
     else:

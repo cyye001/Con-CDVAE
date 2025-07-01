@@ -24,7 +24,8 @@ num_noise_level: 50
 predict_property: True
 
 n_delta: 40
-smooth: True
+smooth: True   # use tanh after encoder, to fix the NaN problem
+nograd: False
 
 defaults:
   - encoder: dimenet

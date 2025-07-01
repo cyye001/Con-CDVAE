@@ -61,7 +61,6 @@ class CrystDataset(Dataset):
         data_dict = self.cached_data[index]
 
         # scaler is set in DataModule set stage
-        # prop = self.scaler.transform(data_dict[self.prop])
         (frac_coords, atom_types, lengths, angles, edge_indices,
          to_jimages, num_atoms) = data_dict['graph_arrays']
 
@@ -79,12 +78,9 @@ class CrystDataset(Dataset):
             num_atoms=num_atoms,
             num_bonds=edge_indices.shape[0],
             num_nodes=num_atoms,  # special attribute used for batching in pytorch geometric
-            # y=prop.view(1, -1),
         )
         
-        # print('here is self prop', self.prop)
         prop_data = {key: value for key, value in data_dict.items() if key in self.prop}
-        # print('here is prop data:', prop_data, flush=True)
         data.update(prop_data)
 
         if self.use_space_group:
@@ -104,7 +100,7 @@ class CrystDataset(Dataset):
         return data
 
     def __repr__(self) -> str:
-        return f"CrystDataset({self.name=}, {self.path=})"
+        return f"CrystDataset({self.name}, {self.path})"
 
 
 class TensorCrystDataset(Dataset):
@@ -167,12 +163,8 @@ def main(cfg: omegaconf.DictConfig):
     lattice_scaler = get_scaler_from_data_list(
         dataset.cached_data,
         key='scaled_lattice')
-    scaler = get_scaler_from_data_list(
-        dataset.cached_data,
-        key=dataset.prop)
 
     dataset.lattice_scaler = lattice_scaler
-    dataset.scaler = scaler
     data_list = [dataset[i] for i in range(len(dataset))]
     batch = Batch.from_data_list(data_list)
     return batch

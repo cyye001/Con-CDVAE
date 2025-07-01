@@ -105,7 +105,7 @@ def run(cfg: DictConfig) -> None:
     )
 
     # Pass scaler from datamodule to model
-    hydra.utils.log.info(f"Passing scaler from datamodule to model <{datamodule.scaler}>")
+    hydra.utils.log.info(f"Passing scaler from datamodule to model <{datamodule.lattice_scaler}>")
     model.lattice_scaler = datamodule.lattice_scaler.copy()
     torch.save(datamodule.lattice_scaler, hydra_dir / 'lattice_scaler.pt')
     datamodule.lattice_scaler.save_to_txt(hydra_dir / "lattice_scaler.txt")

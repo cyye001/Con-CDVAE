@@ -14,6 +14,7 @@ arXiv: [https://arxiv.org/abs/2403.12478](https://arxiv.org/abs/2403.12478)
 - v2.0.0 Use the new PyTorch environment
 - v1.0.0 Initial implementations of Con-CDVAE
 
+> **Tip:** Version 2.x is currently under active development and may be unstable.
 
 ## Environment
 
@@ -77,7 +78,7 @@ and they can be used in the same format as the sample.
 To train a Con-CDVAE, run the following command first:
 
 ```
-python concdvae/run.py data=mptest expname=test model=vae_mp_format
+python concdvae/run.py data=mptest expname=test model=vae_mp_gap
 ```
 
 To use other dataset, user should prepare the data in the same forme as 
@@ -91,7 +92,7 @@ run this command:
 torchrun --nproc_per_node 4 concdvae/run.py \
     data=mptest \
     expname=test \
-    model=vae_mp_format \
+    model=vae_mp_gap \
     train.pl_trainer.accelerator=gpu  \
     train.pl_trainer.devices=4 \
     train.pl_trainer.strategy=ddp_find_unused_parameters_true 

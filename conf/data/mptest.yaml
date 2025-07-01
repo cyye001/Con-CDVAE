@@ -2,11 +2,9 @@ root_path: ${oc.env:PROJECT_ROOT}/data/mptest
 prelo_prop: ['formation_energy_per_atom', 'band_gap', 'FM_type', 'BG_type','CS_type']
 prop: ['formation_energy_per_atom','band_gap']
 num_targets: 1
-# prop: scaled_lattice
-# num_targets: 6
 niggli: true
 primitive: False
-graph_method: crystalnn
+graph_method: mindistance
 lattice_scale_method: scale_length
 preprocess_workers: 1
 readout: mean
@@ -27,10 +25,6 @@ use_pos_index: false
 
 datamodule:
   _target_: concdvae.pl_data.datamodule.CrystDataModule
-
-  # accelerator: ${accelerator}
-  # n_delta: ${data.n_delta}
-  # use_prop: ${data.use_prop}
 
   datasets:
     train:

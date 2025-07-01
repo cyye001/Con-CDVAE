@@ -109,10 +109,6 @@ class CDVAE(BaseModule):
         self.fc_composition = build_mlp(self.hparams.latent_dim, self.hparams.hidden_dim,
                                         self.hparams.fc_num_layers, MAX_ATOMIC_NUM)
 
-        # # for property prediction.
-        # if self.hparams.predict_property:
-        #     self.fc_property = build_mlp(self.hparams.latent_dim, self.hparams.hidden_dim,
-        #                                  self.hparams.fc_num_layers, 1)
 
         sigmas = torch.tensor(np.exp(np.linspace(
             np.log(self.hparams.sigma_begin),
@@ -134,12 +130,7 @@ class CDVAE(BaseModule):
 
         # obtain from datamodule.
         self.lattice_scaler = None
-        # self.scaler = None
 
-        # self.max_prop = None
-        # self.min_prop = None
-
-        # self.device = 'cpu'
 
     def reparameterize(self, mu, logvar):
         """
@@ -157,7 +148,7 @@ class CDVAE(BaseModule):
         """
         encode crystal structures to latents.
         """
-        hidden = self.encoder(batch)  #TODO smoth it
+        hidden = self.encoder(batch)  
         if self.hparams.smooth == True:
             hidden = torch.tanh(hidden)
         mu = self.fc_mu(hidden)
@@ -188,21 +179,19 @@ class CDVAE(BaseModule):
 
 
     def forward(self, batch, teacher_forcing, training):
-        # print('here is batch:',batch,flush=True)
+
+        # embedding the conditions
         condition_emb = self.condition_model(batch)
 
         # hacky way to resolve the NaN issue. Will need more careful debugging later.
+        # You can set smooth == True
         mu, log_var, z = self.encode(batch)
 
+        # use latent various z to predict condition to make a good latent space
         pre_losses = {}
         for con_pre in self.conditions_predict:
             loss = con_pre(batch, z)
             pre_losses.update({con_pre.condition_name+'_loss': loss})
-
-
-        z_nograd = z.detach()
-        z_nograd = torch.cat((z_nograd,condition_emb),dim=1)
-        z_nograd_con = self.z_condition(z_nograd)
 
         z_con = torch.cat((z,condition_emb),dim=1)
         z_con = self.z_condition(z_con)
@@ -243,11 +232,17 @@ class CDVAE(BaseModule):
         noisy_frac_coords = cart_to_frac_coords(
             cart_coords, pred_lengths, pred_angles, batch.num_atoms)
 
+
+        if self.hparams.nograd == True: # Prevent the decoder from affecting the encoder. 
+            z_nograd = z.detach()
+            z_nograd = torch.cat((z_nograd,condition_emb),dim=1)
+            z_con = self.z_condition(z_nograd)
+
         time_emb = self.time_mlp(noise_level)
-        z_nograd_con_time = torch.cat((z_nograd_con, time_emb), dim=1)
+        z_con_time = torch.cat((z_con, time_emb), dim=1)
 
         pred_cart_coord_diff, pred_atom_types = self.decoder(
-            z_nograd_con_time, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
+            z_con_time, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
 
 
         # compute loss.
@@ -256,8 +251,8 @@ class CDVAE(BaseModule):
         composition_loss = self.composition_loss(
             pred_composition_per_atom, batch.atom_types, batch)  #cross
         coord_loss = self.coord_loss(
-            pred_cart_coord_diff, noisy_frac_coords, used_sigmas_per_atom, batch)  #MSE？？ 和加入的误差对比
-        type_loss = self.type_loss(pred_atom_types, batch.atom_types,  #cross  和真实对比？？？
+            pred_cart_coord_diff, noisy_frac_coords, used_sigmas_per_atom, batch)  #MSE 
+        type_loss = self.type_loss(pred_atom_types, batch.atom_types,  #cross  
                                    used_type_sigmas_per_atom, batch)
 
         kld_loss = self.kld_loss(mu, log_var)
@@ -294,10 +289,6 @@ class CDVAE(BaseModule):
 
     def predict_num_atoms(self, z):
         return self.fc_num_atoms(z)
-
-    # def predict_property(self, z):
-    #     self.scaler.match_device(z)
-    #     return self.scaler.inverse_transform(self.fc_property(z))
 
     def predict_lattice(self, z, num_atoms):
         self.lattice_scaler.match_device(z)
@@ -446,7 +437,6 @@ class CDVAE(BaseModule):
 
             log_dict.update({
                 f'{prefix}_loss': loss,
-                # f'{prefix}_property_loss': property_loss,
                 f'{prefix}_natom_accuracy': num_atom_accuracy,
                 f'{prefix}_lengths_mard': lengths_mard,
                 f'{prefix}_angles_mae': angles_mae,
