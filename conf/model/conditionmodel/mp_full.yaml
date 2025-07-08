@@ -1,0 +1,55 @@
+_target_: concdvae.pl_modules.ConditionModel.ConditioningModule
+n_features: 128
+n_layers: 2
+condition_embeddings:
+  - _target_: concdvae.pl_modules.ConditionModel.ClassConditionEmbedding
+    condition_name: crystal_system
+    n_type: 7
+    n_emb: 64
+    n_features: 64
+    n_layers: 3
+
+  - _target_: concdvae.pl_modules.ConditionModel.ClassConditionEmbedding
+    condition_name: spacegroup
+    n_type: 231
+    n_emb: 64
+    n_features: 64
+    n_layers: 3
+
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
+    condition_name: formation_energy_per_atom
+    condition_min: -5.0
+    condition_max: 0.5
+    grid_spacing: 0.5
+    n_features: 64
+    n_layers: 3
+
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
+    condition_name: band_gap
+    condition_min: -0.5
+    condition_max: 9.0
+    grid_spacing: 0.5
+    n_features: 64
+    n_layers: 3
+
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
+    condition_name: e_above_hull
+    condition_min: -0.01
+    condition_max: 0.09
+    grid_spacing: 0.01
+    n_features: 64
+    n_layers: 3
+
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
+    condition_name: n_atom
+    condition_min: 0
+    condition_max: 20
+    grid_spacing: 1
+    n_features: 64
+    n_layers: 3
+
+  # - _target_: concdvae.pl_modules.ConditionModel.VectorialConditionEmbedding
+  #   condition_name: formula
+  #   n_in: 92
+  #   n_features: 64
+  #   n_layers: 3

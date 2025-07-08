@@ -166,6 +166,7 @@ model:
   predict_property: true
   n_delta: 40
   smooth: true
+  nograd: false
 optim:
   optimizer:
     _target_: torch.optim.Adam
@@ -209,9 +210,9 @@ train:
     save_top_k: 1
     verbose: false
     save_last: true
+prior: {}
 expname: mp20
 core:
   version: 0.0.1
   tags:
   - ${now:%Y-%m-%d}
-accelerator: cpu

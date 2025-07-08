@@ -32,7 +32,7 @@ from pytorch_lightning.loggers import CSVLogger
 from concdvae.common.utils import PROJECT_ROOT, log_hyperparameters
 
 
-def build_callbacks(cfg: DictConfig) -> List[Callback]:
+def build_callbacks(cfg: DictConfig, outpath=None, filename=None) -> List[Callback]:
     callbacks: List[Callback] = []
 
     if "lr_monitor" in cfg.logging:
@@ -57,14 +57,19 @@ def build_callbacks(cfg: DictConfig) -> List[Callback]:
 
     if "model_checkpoints" in cfg.train:
         hydra.utils.log.info("Adding callback <ModelCheckpoint>")
+        if outpath is not None:
+            dirpath = Path(outpath)
+        else:
+            dirpath = Path(HydraConfig.get().run.dir)
         callbacks.append(
             ModelCheckpoint(
-                dirpath=Path(HydraConfig.get().run.dir),
+                dirpath=dirpath,
                 monitor=cfg.train.monitor_metric,
                 mode=cfg.train.monitor_metric_mode,
                 save_top_k=cfg.train.model_checkpoints.save_top_k,
                 verbose=cfg.train.model_checkpoints.verbose,
-                save_last=cfg.train.model_checkpoints.save_last
+                save_last=False,
+                filename=filename
             )
         )
 
@@ -155,6 +160,11 @@ def run(cfg: DictConfig) -> None:
 
     hydra.utils.log.info("Starting training!")
     trainer.fit(model=model, datamodule=datamodule, ckpt_path=ckpt)
+    
+    if cfg.train.model_checkpoints.save_last:
+        last_ckpt_path = os.path.join(hydra_dir, f"last.ckpt")
+        trainer.save_checkpoint(last_ckpt_path)
+
     # test_dataloaders = datamodule.test_dataloader()
     hydra.utils.log.info("Starting testing!")
     trainer.test(datamodule=datamodule)

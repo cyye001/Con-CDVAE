@@ -5,7 +5,7 @@ import numpy as np
 import os
 import torch
 from torch_geometric.loader import DataLoader
-
+from torch.nn import functional as F
 from omegaconf import DictConfig, OmegaConf
 from hydra.experimental import compose, initialize_config_dir
 from hydra.core.global_hydra import GlobalHydra
@@ -18,36 +18,69 @@ from concdvae.common.utils import PROJECT_ROOT
 from concdvae.common.data_utils import chemical_symbols
 
 
-def load_model(model_path, model_file, load_data=False):
+def load_model(model_path, model_file=None, load_data=False, prior_label=None):
     GlobalHydra.instance().clear()  # 清除之前的初始化
     with initialize_config_dir(str(model_path)):
-        cfg = compose(config_name='hparams')
-        ckpts = list(Path(model_path).glob('*.ckpt'))
-        if len(ckpts) > 0:
-            ckpt_epochs = np.array(
-                [int(ckpt.parts[-1].split('-')[0].split('=')[1]) for ckpt in ckpts])
-            ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
-        if model_file != None:
+        if prior_label is not None:
+            config_name = f'hparams_{prior_label}'
+            last_ckpt = Path(model_path) / f'{prior_label}-last.ckpt'
+            ckpt_candidates = list(Path(model_path).glob(f"{prior_label}-epoch=*.ckpt"))
+        else:
+            config_name = 'hparams'
+            last_ckpt = Path(model_path) / 'last.ckpt'
+            ckpt_candidates = list(Path(model_path).glob("epoch=*.ckpt"))
+
+        cfg = compose(config_name=config_name)
+        if model_file is not None:
             ckpt = os.path.join(model_path, model_file)
+            if not os.path.isfile(ckpt):
+                raise FileNotFoundError(f"can not find: {ckpt}")
+        else:
+            ckpt = None
+            if last_ckpt.exists():
+                ckpt = str(last_ckpt)
+            else:
+                if ckpt_candidates:
+                    try:
+                        # 提取 epoch 数字并排序
+                        ckpt_epochs = np.array([
+                            int(ckpt.stem.split('=')[1].split('-')[0]) for ckpt in ckpt_candidates
+                        ])
+                        latest_idx = ckpt_epochs.argsort()[-1]
+                        ckpt = str(ckpt_candidates[latest_idx])
+                    except Exception as e:
+                        raise RuntimeError(f"Err: {e}")
 
+        if ckpt is None:
+            raise FileNotFoundError("can not find checkpoint")
 
-    model = hydra.utils.instantiate(
-        cfg.model,
-        optim=cfg.optim,
-        data=cfg.data,
-        logging=cfg.logging,
-        _recursive_=False,
-    )
+    print('load ckpt:',ckpt, flush=True)
+    if prior_label is not None:
+        model = hydra.utils.instantiate(
+            cfg.prior.prior_model,
+            optim=cfg['optim'],
+            data=cfg['data'],
+            logging=cfg['logging'],
+            _recursive_=False,
+        )
+    else:
+        model = hydra.utils.instantiate(
+            cfg.model,
+            optim=cfg.optim,
+            data=cfg.data,
+            logging=cfg.logging,
+            _recursive_=False,
+        )
+
 
     state_dict = torch.load(ckpt, map_location="cpu")
     state_dict = state_dict["state_dict"]
+    state_dict = {k: v for k, v in state_dict.items() if not k.startswith("_model.")}
     model.load_state_dict(state_dict)
-    # model_root = Path(model_path) / model_file
-    # checkpoint = torch.load(model_root, map_location=torch.device('cpu'))
-    # model_state_dict = checkpoint['model']
-    # model.load_state_dict(model_state_dict)
-    lattice_scaler = torch.load(Path(model_path) / 'lattice_scaler.pt')
-    model.lattice_scaler = lattice_scaler
+    
+    if prior_label is None:
+        lattice_scaler = torch.load(Path(model_path) / 'lattice_scaler.pt')
+        model.lattice_scaler = lattice_scaler
 
     if load_data :
         test_datasets = [hydra.utils.instantiate(dataset_cfg)
@@ -175,3 +208,106 @@ def structure_validity(crystal, cutoff=0.5):
         return False
     else:
         return True
+    
+
+def generation(model, prior, input_dict, 
+               batch_size=512, down_sample=1, num_batches_to_sample=1, 
+               ld_kwargs=None):
+
+    all_frac_coords_stack = []
+    all_atom_types_stack = []
+    frac_coords = []
+    num_atoms = []
+    atom_types = []
+    lengths = []
+    angles = []
+
+    if down_sample>1:
+        prior_batch_size = int(batch_size / down_sample)
+    else:
+        prior_batch_size = int(batch_size)
+
+
+    with torch.no_grad():
+        for z_idx in range(num_batches_to_sample):
+            print('No.', z_idx + 1, ' in ', num_batches_to_sample, flush=True)
+            batch_all_frac_coords = []
+            batch_all_atom_types = []
+            batch_frac_coords, batch_num_atoms, batch_atom_types = [], [], []
+            batch_lengths, batch_angles = [], []
+
+            randan_z = torch.randn(batch_size, model.hparams.latent_dim, device=model.device)
+            z = prior.gen(input_dict, randan_z, ld_kwargs)
+
+            ## down sample
+            mae_list = [0] * z.size(0)
+            if down_sample > 1:
+                for j in range(len(model.conditions_predict)):
+                    pre = model.conditions_predict[j].mlp(z)
+                    prop_name = model.hparams.conditionpre.condition_predictp[j].condition_name
+                    if pre.size(-1) == 1:  ##regression
+                        a = model.conditions_predict[j].condition_max
+                        b = model.conditions_predict[j].condition_min
+                        # pre = (pre * (a - b)) + b
+                        mae_tensor = torch.abs(pre - (input_dict[prop_name].item() - b) / (a - b))
+
+                    else:  ##classification
+                        pre = F.softmax(pre, dim=1)
+                        pre = pre[:, int(input_dict[prop_name].item())]
+                        pre = pre.view(-1, 1)
+                        mae_tensor = torch.abs(1 - pre)
+
+                    for k in range(batch_size):
+                        sub_tensor = mae_tensor[k:k + 1, :].cpu()
+                        mae_list[k] += sub_tensor.item()
+
+                sorted_indices = sorted(range(len(mae_list)), key=lambda k: mae_list[k])
+                min_n_indices = sorted_indices[:prior_batch_size]
+                z = z[min_n_indices, :]
+
+                print('loss', mae_list[sorted_indices[0]], mae_list[sorted_indices[prior_batch_size]])
+                print('after down sample', z.shape)
+
+
+            condition_emb = model.condition_model(input_dict)
+            condition_emb = condition_emb.repeat(prior_batch_size, 1).float()
+            z_con = torch.cat((z, condition_emb), dim=1)
+            z_con = model.z_condition(z_con)
+
+            for sample_idx in range(ld_kwargs.num_samples_per_z):
+                samples = model.langevin_dynamics(z_con, ld_kwargs)
+
+                # collect sampled crystals in this batch.
+                batch_frac_coords.append(samples['frac_coords'].detach().cpu())
+                batch_num_atoms.append(samples['num_atoms'].detach().cpu())
+                batch_atom_types.append(samples['atom_types'].detach().cpu())
+                batch_lengths.append(samples['lengths'].detach().cpu())
+                batch_angles.append(samples['angles'].detach().cpu())
+                if ld_kwargs.save_traj:
+                    batch_all_frac_coords.append(
+                        samples['all_frac_coords'][::ld_kwargs.down_sample_traj_step].detach().cpu())
+                    batch_all_atom_types.append(
+                        samples['all_atom_types'][::ld_kwargs.down_sample_traj_step].detach().cpu())
+            
+            # collect sampled crystals for this z.
+            frac_coords.append(torch.stack(batch_frac_coords, dim=0))
+            num_atoms.append(torch.stack(batch_num_atoms, dim=0))
+            atom_types.append(torch.stack(batch_atom_types, dim=0))
+            lengths.append(torch.stack(batch_lengths, dim=0))
+            angles.append(torch.stack(batch_angles, dim=0))
+            if ld_kwargs.save_traj:
+                all_frac_coords_stack.append(
+                    torch.stack(batch_all_frac_coords, dim=0))
+                all_atom_types_stack.append(
+                    torch.stack(batch_all_atom_types, dim=0))
+                
+    frac_coords = torch.cat(frac_coords, dim=1)
+    num_atoms = torch.cat(num_atoms, dim=1)
+    atom_types = torch.cat(atom_types, dim=1)
+    lengths = torch.cat(lengths, dim=1)
+    angles = torch.cat(angles, dim=1)
+    if ld_kwargs.save_traj:
+        all_frac_coords_stack = torch.cat(all_frac_coords_stack, dim=2)
+        all_atom_types_stack = torch.cat(all_atom_types_stack, dim=2)
+    return (frac_coords, num_atoms, atom_types, lengths, angles,
+            all_frac_coords_stack, all_atom_types_stack)

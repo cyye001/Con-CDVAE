@@ -25,6 +25,7 @@ predict_property: True
 
 n_delta: 40
 smooth: True
+nograd: False 
 
 defaults:
   - encoder: dimenet

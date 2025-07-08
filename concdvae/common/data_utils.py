@@ -8,6 +8,7 @@ import itertools
 from pymatgen.core.structure import Structure
 from pymatgen.core.lattice import Lattice
 from pymatgen.analysis.graphs import StructureGraph
+# from pymatgen.analysis.graphs import from_local_env_strategy  # if use new pymatgen, may use this instead of StructureGraph.with_local_env_strategy
 from pymatgen.analysis import local_env
 
 from networkx.algorithms.components import is_connected

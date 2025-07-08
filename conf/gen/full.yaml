@@ -1,0 +1,26 @@
+model_path: ${oc.env:PROJECT_ROOT}/src/model/mp20_format  # path to the model directory
+prior_path: None             # if set None, will use model_path
+model_file: epoch=330-step=17543.ckpt   # ckpt of the main model, if set None, will use the last.ckpt in model_path
+prior_file: prior_full-epoch=95-step=10176.ckpt # ckpt of the prior model, if set None, will use the {prior_label}-last.ckpt in prior_path
+prior_label: None # label of the prior model, if set None, will use the label in prior_file
+# prior_label and prior_file can not be both None
+
+label: ''
+deterministic: true
+seed: 123
+batch_size: 20
+down_sample: 1
+num_batches_to_samples: 2
+save_traj: false
+down_sample_traj_step: 10
+num_samples_per_z: 1
+use_one: true
+
+input_path: general_full.csv
+refdata_path: ${oc.env:PROJECT_ROOT}/data/mp4conz/train.csv
+
+
+disable_bar: false
+min_sigma: 0.0
+step_lr: 1e-4
+n_step_each: 100

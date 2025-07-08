@@ -22,7 +22,7 @@ teacher_forcing_max_epoch: 200
 n_delta: 40
 tolerance: 0.1
 use_space_group: false
-load_old: false
+load_old: True
 use_pos_index: false
 
 datamodule:

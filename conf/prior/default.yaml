@@ -1,0 +1,9 @@
+prior_model:
+  _target_: concdvae.pl_prior.model.prior
+  ddpm_noise_start: 0.001
+  ddpm_noise_end: 0.02
+  ddpm_n_noise: 300
+  time_emb_dim: 64
+  n_UNet_layers: 3
+  conditionmodel: ${model.conditionmodel}
+  hidden_dim: ${model.hidden_dim}

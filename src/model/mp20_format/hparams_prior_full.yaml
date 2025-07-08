@@ -1,0 +1,315 @@
+data:
+  root_path: /data/work/cyye/0-project/15-con_cdvae/Con-CDVAE/data/mp4conz
+  prelo_prop:
+  - formation_energy_per_atom
+  - band_gap
+  - crystal_system
+  - spacegroup
+  - e_above_hull
+  - n_atom
+  prop:
+  - formation_energy_per_atom
+  - band_gap
+  - crystal_system
+  - spacegroup
+  - e_above_hull
+  - n_atom
+  num_targets: 1
+  niggli: true
+  primitive: false
+  graph_method: crystalnn
+  lattice_scale_method: scale_length
+  preprocess_workers: 30
+  readout: mean
+  max_atoms: 20
+  otf_graph: false
+  eval_model_name: mp20
+  train_max_epochs: 500
+  early_stopping_patience: 100000
+  teacher_forcing_max_epoch: 200
+  n_delta: 40
+  tolerance: 0.1
+  use_space_group: false
+  load_old: false
+  use_pos_index: false
+  datamodule:
+    _target_: concdvae.pl_data.datamodule.CrystDataModule
+    datasets:
+      train:
+        _target_: concdvae.pl_data.dataset.CrystDataset
+        name: Formation energy train
+        path: /data/work/cyye/0-project/15-con_cdvae/Con-CDVAE/data/mp4conz/train.csv
+        prop:
+        - formation_energy_per_atom
+        - band_gap
+        - crystal_system
+        - spacegroup
+        - e_above_hull
+        - n_atom
+        niggli: true
+        primitive: false
+        graph_method: crystalnn
+        lattice_scale_method: scale_length
+        preprocess_workers: 30
+        save_path: /data/work/cyye/0-project/15-con_cdvae/Con-CDVAE/data/mp4conz/train_data.pt
+        tolerance: 0.1
+        use_space_group: false
+        use_pos_index: false
+        load_old: false
+        prelo_prop:
+        - formation_energy_per_atom
+        - band_gap
+        - crystal_system
+        - spacegroup
+        - e_above_hull
+        - n_atom
+      val:
+      - _target_: concdvae.pl_data.dataset.CrystDataset
+        name: Formation energy val
+        path: /data/work/cyye/0-project/15-con_cdvae/Con-CDVAE/data/mp4conz/val.csv
+        prop:
+        - formation_energy_per_atom
+        - band_gap
+        - crystal_system
+        - spacegroup
+        - e_above_hull
+        - n_atom
+        niggli: true
+        primitive: false
+        graph_method: crystalnn
+        lattice_scale_method: scale_length
+        preprocess_workers: 30
+        save_path: /data/work/cyye/0-project/15-con_cdvae/Con-CDVAE/data/mp4conz/val_data.pt
+        tolerance: 0.1
+        use_space_group: false
+        use_pos_index: false
+        load_old: false
+        prelo_prop:
+        - formation_energy_per_atom
+        - band_gap
+        - crystal_system
+        - spacegroup
+        - e_above_hull
+        - n_atom
+      test:
+      - _target_: concdvae.pl_data.dataset.CrystDataset
+        name: Formation energy test
+        path: /data/work/cyye/0-project/15-con_cdvae/Con-CDVAE/data/mp4conz/test.csv
+        prop:
+        - formation_energy_per_atom
+        - band_gap
+        - crystal_system
+        - spacegroup
+        - e_above_hull
+        - n_atom
+        niggli: true
+        primitive: false
+        graph_method: crystalnn
+        lattice_scale_method: scale_length
+        preprocess_workers: 30
+        save_path: /data/work/cyye/0-project/15-con_cdvae/Con-CDVAE/data/mp4conz/test_data.pt
+        tolerance: 0.1
+        use_space_group: false
+        use_pos_index: false
+        load_old: false
+        prelo_prop:
+        - formation_energy_per_atom
+        - band_gap
+        - crystal_system
+        - spacegroup
+        - e_above_hull
+        - n_atom
+    num_workers:
+      train: 0
+      val: 0
+      test: 0
+    batch_size:
+      train: 256
+      val: 256
+      test: 256
+logging:
+  val_check_interval: 1
+  progress_bar_refresh_rate: 20
+  csvlogger:
+    name: mp20
+  lr_monitor:
+    logging_interval: step
+    log_momentum: false
+model:
+  encoder:
+    _target_: concdvae.pl_modules.gnn.DimeNetPlusPlusWrap
+    num_targets: 1
+    hidden_channels: 128
+    num_blocks: 4
+    int_emb_size: 64
+    basis_emb_size: 8
+    out_emb_channels: 256
+    num_spherical: 7
+    num_radial: 6
+    otf_graph: false
+    cutoff: 7.0
+    max_num_neighbors: 20
+    envelope_exponent: 5
+    num_before_skip: 1
+    num_after_skip: 2
+    num_output_layers: 3
+    readout: mean
+  decoder:
+    _target_: concdvae.pl_modules.decoder.GemNetTDecoder
+    hidden_dim: 128
+    latent_dim: 256
+    time_emb_dim: 64
+    max_neighbors: 20
+    radius: 9.0
+    scale_file: /data/work/cyye/0-project/15-con_cdvae/Con-CDVAE/concdvae/pl_modules/gemnet/gemnet-dT.json
+  conditionmodel:
+    _target_: concdvae.pl_modules.ConditionModel.ConditioningModule
+    n_features: 128
+    n_layers: 2
+    condition_embeddings:
+    - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
+      condition_name: formation_energy_per_atom
+      condition_min: -6.0
+      condition_max: 1.0
+      grid_spacing: 0.5
+      n_features: 64
+      n_layers: 3
+  conditionpre:
+    condition_predict:
+    - _target_: concdvae.pl_modules.PreCondition.ScalarConditionPredict
+      condition_name: formation_energy_per_atom
+      condition_min: -6.0
+      condition_max: 1.0
+      latent_dim: 256
+      hidden_dim: 256
+      out_dim: 1
+      n_layers: 2
+  _target_: concdvae.pl_modules.model.CDVAE
+  hidden_dim: 256
+  latent_dim: 256
+  time_emb_dim: 64
+  fc_num_layers: 1
+  max_atoms: 20
+  cost_natom: 1.0
+  cost_coord: 10.0
+  cost_type: 1.0
+  cost_lattice: 10.0
+  cost_composition: 1.0
+  cost_edge: 10.0
+  cost_property: 3.0
+  beta: 0.01
+  teacher_forcing_lattice: true
+  teacher_forcing_max_epoch: 200
+  max_neighbors: 20
+  radius: 9.0
+  sigma_begin: 10.0
+  sigma_end: 0.01
+  type_sigma_begin: 5.0
+  type_sigma_end: 0.01
+  num_noise_level: 50
+  predict_property: true
+  n_delta: 40
+  smooth: true
+  nograd: false
+optim:
+  optimizer:
+    _target_: torch.optim.Adam
+    lr: 0.001
+    betas:
+    - 0.9
+    - 0.999
+    eps: 1.0e-08
+    weight_decay: 0
+  use_lr_scheduler: true
+  lr_scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    factor: 0.6
+    patience: 30
+    min_lr: 1.0e-05
+train:
+  deterministic: true
+  random_seed: 42
+  use_exit: false
+  pl_trainer:
+    fast_dev_run: false
+    devices: 1
+    strategy: auto
+    accelerator: auto
+    precision: 32
+    max_epochs: 100
+    accumulate_grad_batches: 1
+    num_sanity_val_steps: 2
+    gradient_clip_val: 0.5
+    gradient_clip_algorithm: value
+    profiler: simple
+    use_distributed_sampler: true
+    log_every_n_steps: 1000000000
+    enable_progress_bar: true
+  monitor_metric: val_loss
+  monitor_metric_mode: min
+  early_stopping:
+    patience: 10000
+    verbose: false
+  model_checkpoints:
+    save_top_k: 1
+    verbose: false
+    save_last: true
+prior:
+  prior_model:
+    _target_: concdvae.pl_prior.model.prior
+    ddpm_noise_start: 0.001
+    ddpm_noise_end: 0.02
+    ddpm_n_noise: 300
+    time_emb_dim: 64
+    n_UNet_layers: 3
+    conditionmodel:
+      _target_: concdvae.pl_modules.ConditionModel.ConditioningModule
+      n_features: 128
+      n_layers: 2
+      condition_embeddings:
+      - _target_: concdvae.pl_modules.ConditionModel.ClassConditionEmbedding
+        condition_name: crystal_system
+        n_type: 7
+        n_emb: 64
+        n_features: 64
+        n_layers: 3
+      - _target_: concdvae.pl_modules.ConditionModel.ClassConditionEmbedding
+        condition_name: spacegroup
+        n_type: 231
+        n_emb: 64
+        n_features: 64
+        n_layers: 3
+      - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
+        condition_name: formation_energy_per_atom
+        condition_min: -5.0
+        condition_max: 0.5
+        grid_spacing: 0.5
+        n_features: 64
+        n_layers: 3
+      - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
+        condition_name: band_gap
+        condition_min: -0.5
+        condition_max: 9.0
+        grid_spacing: 0.5
+        n_features: 64
+        n_layers: 3
+      - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
+        condition_name: e_above_hull
+        condition_min: -0.01
+        condition_max: 0.09
+        grid_spacing: 0.01
+        n_features: 64
+        n_layers: 3
+      - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
+        condition_name: n_atom
+        condition_min: 0
+        condition_max: 20
+        grid_spacing: 1
+        n_features: 64
+        n_layers: 3
+    hidden_dim: 256
+expname: mp20
+core:
+  version: 0.0.1
+  tags:
+  - '2025-07-08'

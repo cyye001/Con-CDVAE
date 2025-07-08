@@ -25,7 +25,7 @@ predict_property: True
 
 n_delta: 40
 smooth: True   # use tanh after encoder, to fix the NaN problem
-nograd: False
+nograd: False  # will the decoder gradients be used in the encoder
 
 defaults:
   - encoder: dimenet

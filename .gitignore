@@ -4,10 +4,20 @@ output/*
 
 .env
 
-pyrun_ddp.sh
+pyrun*
 
 data/mp_20/*.pt
 
 data/mptest/*.pt
 
 data/mptest4conz/*.pt
+
+data/mp4conz/*.pt
+
+conf/prior/test.yaml
+
+concdvae/pl_prior/datamodule.py
+
+conf/gen/test.yaml
+
+src/model/mp20_format/eval*
