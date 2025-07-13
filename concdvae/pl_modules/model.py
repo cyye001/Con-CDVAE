@@ -19,6 +19,10 @@ from concdvae.pl_modules.embeddings import MAX_ATOMIC_NUM
 from concdvae.pl_modules.embeddings import KHOT_EMBEDDINGS
 
 class SinusoidalPositionEmbeddings(nn.Module):
+    """
+    Sinusoidal position embeddings for diffusion time steps.
+    This is used to encode the noise level (time step) in the diffusion process.
+    """
     def __init__(self, dim):
         super().__init__()
         self.dim = dim
@@ -34,6 +38,20 @@ class SinusoidalPositionEmbeddings(nn.Module):
         return embeddings
 
 def build_mlp(in_dim, hidden_dim, fc_num_layers, out_dim, drop=-1, norm=True):
+    """
+    Build a multi-layer perceptron (MLP) with configurable parameters.
+    
+    Args:
+        in_dim: Input dimension
+        hidden_dim: Hidden layer dimension
+        fc_num_layers: Number of fully connected layers
+        out_dim: Output dimension
+        drop: Dropout rate (if > 0 and < 1)
+        norm: Whether to use batch normalization
+    
+    Returns:
+        nn.Sequential: The constructed MLP
+    """
     if norm:
         mods = [nn.Linear(in_dim, hidden_dim),nn.BatchNorm1d(num_features=hidden_dim), nn.ReLU()]
     else:
@@ -71,6 +89,7 @@ class CDVAE(BaseModule):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
+        # Initialize condition prediction modules
         conditions_predict = []
         self.conditions_name = []
         for pre in self.hparams.conditionpre.condition_predict:
@@ -78,30 +97,33 @@ class CDVAE(BaseModule):
             self.conditions_name.append(pre.condition_name)
         self.conditions_predict = nn.ModuleList(conditions_predict)
 
-
+        # Condition model for embedding external conditions
         self.condition_model = hydra.utils.instantiate(self.hparams.conditionmodel, _recursive_=False)
 
+        # MLP to combine latent vector with condition embeddings
         self.z_condition = build_mlp(self.hparams.latent_dim+self.hparams.conditionmodel.n_features,
                                     self.hparams.hidden_dim,
                                     self.hparams.fc_num_layers,
                                     self.hparams.latent_dim)
 
+        # Time embedding for diffusion process
         self.time_mlp = nn.Sequential(
             SinusoidalPositionEmbeddings(self.hparams.time_emb_dim),
             nn.Linear(self.hparams.time_emb_dim, self.hparams.time_emb_dim), nn.ReLU()
         )
 
-
+        # Encoder and decoder networks
         self.encoder = hydra.utils.instantiate(
             self.hparams.encoder, num_targets=self.hparams.latent_dim)
         self.decoder = hydra.utils.instantiate(self.hparams.decoder)
 
-
+        # VAE components: mean and variance predictors
         self.fc_mu = nn.Linear(self.hparams.latent_dim,
                                self.hparams.latent_dim)
         self.fc_var = nn.Linear(self.hparams.latent_dim,
                                 self.hparams.latent_dim)
 
+        # Predictors for crystal structure components
         self.fc_num_atoms = build_mlp(self.hparams.latent_dim, self.hparams.hidden_dim,
                                       self.hparams.fc_num_layers, self.hparams.max_atoms + 1)
         self.fc_lattice = build_mlp(self.hparams.latent_dim, self.hparams.hidden_dim,
@@ -109,7 +131,7 @@ class CDVAE(BaseModule):
         self.fc_composition = build_mlp(self.hparams.latent_dim, self.hparams.hidden_dim,
                                         self.hparams.fc_num_layers, MAX_ATOMIC_NUM)
 
-
+        # Noise schedule for coordinate diffusion
         sigmas = torch.tensor(np.exp(np.linspace(
             np.log(self.hparams.sigma_begin),
             np.log(self.hparams.sigma_end),
@@ -117,6 +139,7 @@ class CDVAE(BaseModule):
 
         self.sigmas = nn.Parameter(sigmas, requires_grad=False)
 
+        # Noise schedule for atom type diffusion
         type_sigmas = torch.tensor(np.exp(np.linspace(
             np.log(self.hparams.type_sigma_begin),
             np.log(self.hparams.type_sigma_end),
@@ -134,11 +157,14 @@ class CDVAE(BaseModule):
 
     def reparameterize(self, mu, logvar):
         """
-        Reparameterization trick to sample from N(mu, var) from
-        N(0,1).
-        :param mu: (Tensor) Mean of the latent Gaussian [B x D]
-        :param logvar: (Tensor) Standard deviation of the latent Gaussian [B x D]
-        :return: (Tensor) [B x D]
+        Reparameterization trick to sample from N(mu, var) from N(0,1).
+        
+        Args:
+            mu: Mean of the latent Gaussian [B x D]
+            logvar: Log variance of the latent Gaussian [B x D]
+            
+        Returns:
+            Sampled latent vector [B x D]
         """
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
@@ -146,7 +172,13 @@ class CDVAE(BaseModule):
 
     def encode(self, batch):
         """
-        encode crystal structures to latents.
+        Encode crystal structures to latent representations.
+        
+        Args:
+            batch: Input batch containing crystal structure data
+            
+        Returns:
+            tuple: (mu, log_var, z) - mean, log variance, and sampled latent vector
         """
         hidden = self.encoder(batch)  
         if self.hparams.smooth == True:
@@ -159,8 +191,17 @@ class CDVAE(BaseModule):
     def decode_stats(self, z, gt_num_atoms=None, gt_lengths=None, gt_angles=None,
                      teacher_forcing=False):
         """
-        decode key stats from latent embeddings.
-        batch is input during training for teach-forcing.
+        Decode key statistics from latent embeddings.
+        
+        Args:
+            z: Latent vector
+            gt_num_atoms: Ground truth number of atoms (for teacher forcing)
+            gt_lengths: Ground truth lattice lengths (for teacher forcing)
+            gt_angles: Ground truth lattice angles (for teacher forcing)
+            teacher_forcing: Whether to use teacher forcing
+            
+        Returns:
+            tuple: (num_atoms, lengths_and_angles, lengths, angles, composition_per_atom)
         """
         if gt_num_atoms is not None:
             num_atoms = self.predict_num_atoms(z)
@@ -179,29 +220,41 @@ class CDVAE(BaseModule):
 
 
     def forward(self, batch, teacher_forcing, training):
-
-        # embedding the conditions
+        """
+        Forward pass through the CDVAE model.
+        
+        Args:
+            batch: Input batch containing crystal structure data
+            teacher_forcing: Whether to use teacher forcing
+            training: Whether in training mode
+            
+        Returns:
+            dict: Dictionary containing all losses and predictions
+        """
+        # Embed the conditions
         condition_emb = self.condition_model(batch)
 
         # hacky way to resolve the NaN issue. Will need more careful debugging later.
         # You can set smooth == True
+        # Encode to get latent representation
         mu, log_var, z = self.encode(batch)
 
-        # use latent various z to predict condition to make a good latent space
+        # Use latent vector to predict conditions for better latent space
         pre_losses = {}
         for con_pre in self.conditions_predict:
             loss = con_pre(batch, z)
             pre_losses.update({con_pre.condition_name+'_loss': loss})
 
+        # Combine latent vector with condition embeddings
         z_con = torch.cat((z,condition_emb),dim=1)
         z_con = self.z_condition(z_con)
 
-        
+        # Decode crystal structure statistics
         (pred_num_atoms, pred_lengths_and_angles, pred_lengths, pred_angles,
          pred_composition_per_atom) = self.decode_stats(
             z_con, batch.num_atoms, batch.lengths, batch.angles, teacher_forcing)
 
-        # sample noise levels.
+        # Sample noise levels for diffusion
         noise_level = torch.randint(0, self.sigmas.size(0),
                                     (batch.num_atoms.size(0),),
                                     device=self.device)
@@ -213,7 +266,7 @@ class CDVAE(BaseModule):
             self.type_sigmas[type_noise_level].repeat_interleave(
                 batch.num_atoms, dim=0))
 
-        # add noise to atom types and sample atom types.
+        # Add noise to atom types and sample atom types
         pred_composition_probs = F.softmax(
             pred_composition_per_atom.detach(), dim=-1)
         atom_type_probs = (
@@ -222,7 +275,7 @@ class CDVAE(BaseModule):
         rand_atom_types = torch.multinomial(
             atom_type_probs, num_samples=1).squeeze(1) + 1
 
-        # add noise to the cart coords
+        # Add noise to the cartesian coordinates
         cart_noises_per_atom = (
                 torch.randn_like(batch.frac_coords) *
                 used_sigmas_per_atom[:, None])
@@ -232,20 +285,21 @@ class CDVAE(BaseModule):
         noisy_frac_coords = cart_to_frac_coords(
             cart_coords, pred_lengths, pred_angles, batch.num_atoms)
 
-
-        if self.hparams.nograd == True: # Prevent the decoder from affecting the encoder. 
+        # Prevent decoder from affecting encoder if nograd is True
+        if self.hparams.nograd == True: 
             z_nograd = z.detach()
             z_nograd = torch.cat((z_nograd,condition_emb),dim=1)
             z_con = self.z_condition(z_nograd)
 
+        # Add time embedding for diffusion
         time_emb = self.time_mlp(noise_level)
         z_con_time = torch.cat((z_con, time_emb), dim=1)
 
+        # Decode coordinate differences and atom types
         pred_cart_coord_diff, pred_atom_types = self.decoder(
             z_con_time, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
 
-
-        # compute loss.
+        # Compute all losses
         num_atom_loss = self.num_atom_loss(pred_num_atoms, batch) #cross
         lattice_loss = self.lattice_loss(pred_lengths_and_angles, batch) #MSE
         composition_loss = self.composition_loss(
@@ -257,7 +311,7 @@ class CDVAE(BaseModule):
 
         kld_loss = self.kld_loss(mu, log_var)
 
-
+        # Prepare output dictionary
         output = {
             'num_atom_loss': num_atom_loss,
             'lattice_loss': lattice_loss,
@@ -288,9 +342,20 @@ class CDVAE(BaseModule):
         return output
 
     def predict_num_atoms(self, z):
+        """Predict number of atoms from latent vector."""
         return self.fc_num_atoms(z)
 
     def predict_lattice(self, z, num_atoms):
+        """
+        Predict lattice parameters (lengths and angles) from latent vector.
+        
+        Args:
+            z: Latent vector
+            num_atoms: Number of atoms per structure
+            
+        Returns:
+            tuple: (lengths_and_angles, lengths, angles)
+        """
         self.lattice_scaler.match_device(z)
         pred_lengths_and_angles = self.fc_lattice(z)  # (N, 6)
         scaled_preds = self.lattice_scaler.inverse_transform(
@@ -303,17 +368,39 @@ class CDVAE(BaseModule):
         return pred_lengths_and_angles, pred_lengths, pred_angles
 
     def predict_composition(self, z, num_atoms):
+        """
+        Predict atomic composition from latent vector.
+        
+        Args:
+            z: Latent vector
+            num_atoms: Number of atoms per structure
+            
+        Returns:
+            Composition probabilities per atom
+        """
         z_per_atom = z.repeat_interleave(num_atoms, dim=0)
         pred_composition_per_atom = self.fc_composition(z_per_atom)
         return pred_composition_per_atom
 
     def num_atom_loss(self, pred_num_atoms, batch):
+        """Cross-entropy loss for number of atoms prediction."""
         return F.cross_entropy(pred_num_atoms, batch.num_atoms)
 
     def property_loss(self, z, batch):
+        """MSE loss for property prediction."""
         return F.mse_loss(self.fc_property(z), batch.y)
 
     def lattice_loss(self, pred_lengths_and_angles, batch):
+        """
+        MSE loss for lattice parameter prediction.
+        
+        Args:
+            pred_lengths_and_angles: Predicted lattice parameters
+            batch: Ground truth batch data
+            
+        Returns:
+            MSE loss between predicted and target lattice parameters
+        """
         self.lattice_scaler.match_device(pred_lengths_and_angles)
         if self.hparams.data.lattice_scale_method == 'scale_length':
             target_lengths = batch.lengths / \
@@ -325,6 +412,17 @@ class CDVAE(BaseModule):
         return F.mse_loss(pred_lengths_and_angles, target_lengths_and_angles)
 
     def composition_loss(self, pred_composition_per_atom, target_atom_types, batch):
+        """
+        Cross-entropy loss for composition prediction.
+        
+        Args:
+            pred_composition_per_atom: Predicted composition probabilities
+            target_atom_types: Target atom types
+            batch: Batch data for scatter operation
+            
+        Returns:
+            Mean cross-entropy loss per structure
+        """
         target_atom_types = target_atom_types - 1
         loss = F.cross_entropy(pred_composition_per_atom,
                                target_atom_types, reduction='none')
@@ -332,6 +430,18 @@ class CDVAE(BaseModule):
 
     def coord_loss(self, pred_cart_coord_diff, noisy_frac_coords,
                    used_sigmas_per_atom, batch):
+        """
+        MSE loss for coordinate prediction in diffusion process.
+        
+        Args:
+            pred_cart_coord_diff: Predicted coordinate differences
+            noisy_frac_coords: Noisy fractional coordinates
+            used_sigmas_per_atom: Noise levels per atom
+            batch: Ground truth batch data
+            
+        Returns:
+            Weighted MSE loss for coordinate prediction
+        """
         noisy_cart_coords = frac_to_cart_coords(
             noisy_frac_coords, batch.lengths, batch.angles, batch.num_atoms)
         target_cart_coords = frac_to_cart_coords(
@@ -353,6 +463,18 @@ class CDVAE(BaseModule):
 
     def type_loss(self, pred_atom_types, target_atom_types,
                   used_type_sigmas_per_atom, batch):
+        """
+        Cross-entropy loss for atom type prediction in diffusion process.
+        
+        Args:
+            pred_atom_types: Predicted atom type probabilities
+            target_atom_types: Target atom types
+            used_type_sigmas_per_atom: Noise levels for atom types
+            batch: Batch data for scatter operation
+            
+        Returns:
+            Weighted cross-entropy loss for atom type prediction
+        """
         target_atom_types = target_atom_types - 1
         loss = F.cross_entropy(
             pred_atom_types, target_atom_types, reduction='none')
@@ -361,12 +483,33 @@ class CDVAE(BaseModule):
         return scatter(loss, batch.batch, reduce='mean').mean()
 
     def kld_loss(self, mu, log_var):
+        """
+        KL divergence loss for VAE regularization.
+        
+        Args:
+            mu: Mean of latent distribution
+            log_var: Log variance of latent distribution
+            
+        Returns:
+            KL divergence loss
+        """
         kld_loss = torch.mean(
             -0.5 * torch.sum(1 + log_var - mu ** 2 - log_var.exp(), dim=1), dim=0)
         return kld_loss
 
 
     def compute_stats(self, batch, outputs, prefix):
+        """
+        Compute training/validation statistics and losses.
+        
+        Args:
+            batch: Input batch
+            outputs: Model outputs
+            prefix: Prefix for logging ('train', 'val', or 'test')
+            
+        Returns:
+            tuple: (log_dict, loss) - logging dictionary and total loss
+        """
         num_atom_loss = outputs['num_atom_loss']
         lattice_loss = outputs['lattice_loss']
         coord_loss = outputs['coord_loss']
@@ -377,6 +520,7 @@ class CDVAE(BaseModule):
         if not self.hparams.predict_property:
             predict_loss = predict_loss * 0.0
 
+        # Compute total loss with weighted components
         loss = (
                 self.hparams.cost_natom * num_atom_loss +
                 self.hparams.cost_lattice * lattice_loss +
@@ -386,7 +530,7 @@ class CDVAE(BaseModule):
                 self.hparams.cost_composition * composition_loss +
                 self.hparams.cost_property * predict_loss)
 
-
+        # Prepare logging dictionary
         log_dict = {
             f'{prefix}_loss': loss,
             f'{prefix}_natom_loss': num_atom_loss,
@@ -399,17 +543,17 @@ class CDVAE(BaseModule):
         }
 
         if prefix != 'train':
-            # validation/test loss only has coord and type
+            # Validation/test loss only has coord and type
             loss = (
                     self.hparams.cost_coord * coord_loss +
                     self.hparams.cost_type * type_loss)
 
-            # evaluate num_atom prediction.
+            # Evaluate num_atom prediction accuracy
             pred_num_atoms = outputs['pred_num_atoms'].argmax(dim=-1)
             num_atom_accuracy = (
                                         pred_num_atoms == batch.num_atoms).sum() / batch.num_graphs
 
-            # evalute lattice prediction.
+            # Evaluate lattice prediction accuracy
             pred_lengths_and_angles = outputs['pred_lengths_and_angles']
             scaled_preds = self.lattice_scaler.inverse_transform(
                 pred_lengths_and_angles)
@@ -427,7 +571,7 @@ class CDVAE(BaseModule):
                 batch.lengths, batch.angles)
             volumes_mard = mard(true_volumes, pred_volumes)
 
-            # evaluate atom type prediction.
+            # Evaluate atom type prediction accuracy
             pred_atom_types = outputs['pred_atom_types']
             target_atom_types = outputs['target_atom_types']
             type_accuracy = pred_atom_types.argmax(
@@ -448,6 +592,16 @@ class CDVAE(BaseModule):
     
 
     def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
+        """
+        Training step for PyTorch Lightning.
+        
+        Args:
+            batch: Input batch
+            batch_idx: Batch index
+            
+        Returns:
+            Training loss
+        """
         teacher_forcing = (
             self.current_epoch <= self.hparams.teacher_forcing_max_epoch)
         outputs = self(batch, teacher_forcing, training=True)
@@ -461,6 +615,16 @@ class CDVAE(BaseModule):
         return loss
 
     def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
+        """
+        Validation step for PyTorch Lightning.
+        
+        Args:
+            batch: Input batch
+            batch_idx: Batch index
+            
+        Returns:
+            Validation loss
+        """
         outputs = self(batch, teacher_forcing=False, training=False)
         log_dict, loss = self.compute_stats(batch, outputs, prefix='val')
         self.log_dict(
@@ -472,6 +636,16 @@ class CDVAE(BaseModule):
         return loss
 
     def test_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
+        """
+        Test step for PyTorch Lightning.
+        
+        Args:
+            batch: Input batch
+            batch_idx: Batch index
+            
+        Returns:
+            Test loss
+        """
         outputs = self(batch, teacher_forcing=False, training=False)
         log_dict, loss = self.compute_stats(batch, outputs, prefix='test')
         self.log_dict(
@@ -483,15 +657,21 @@ class CDVAE(BaseModule):
     @torch.no_grad()
     def langevin_dynamics(self, z, ld_kwargs, gt_num_atoms=None, gt_atom_types=None):
         """
-        decode crystral structure from latent embeddings.
-        ld_kwargs: args for doing annealed langevin dynamics sampling:
-            n_step_each:  number of steps for each sigma level.
-            step_lr:      step size param.
-            min_sigma:    minimum sigma to use in annealed langevin dynamics.
-            save_traj:    if <True>, save the entire LD trajectory.
-            disable_bar:  disable the progress bar of langevin dynamics.
-        gt_num_atoms: if not <None>, use the ground truth number of atoms.
-        gt_atom_types: if not <None>, use the ground truth atom types.
+        Decode crystal structure from latent embeddings using annealed Langevin dynamics.
+        
+        Args:
+            z: Latent vector
+            ld_kwargs: Arguments for Langevin dynamics:
+                n_step_each: Number of steps for each sigma level
+                step_lr: Step size parameter
+                min_sigma: Minimum sigma to use in annealed Langevin dynamics
+                save_traj: If True, save the entire LD trajectory
+                disable_bar: Disable the progress bar of Langevin dynamics
+            gt_num_atoms: If not None, use the ground truth number of atoms
+            gt_atom_types: If not None, use the ground truth atom types
+            
+        Returns:
+            dict: Generated crystal structure with optional trajectory
         """
         if ld_kwargs.save_traj:
             all_frac_coords = []
@@ -499,13 +679,13 @@ class CDVAE(BaseModule):
             all_noise_cart = []
             all_atom_types = []
 
-        # obtain key stats.
+        # Obtain key statistics from latent vector
         num_atoms, _, lengths, angles, composition_per_atom = self.decode_stats(
             z, gt_num_atoms)
         if gt_num_atoms is not None:
             num_atoms = gt_num_atoms
 
-        # obtain atom types.
+        # Obtain atom types
         composition_per_atom = F.softmax(composition_per_atom, dim=-1)
         if gt_atom_types is None:
             cur_atom_types = self.sample_composition(
@@ -513,16 +693,17 @@ class CDVAE(BaseModule):
         else:
             cur_atom_types = gt_atom_types
 
-        # init coords.
+        # Initialize coordinates randomly
         cur_frac_coords = torch.rand((num_atoms.sum(), 3), device=z.device)
 
-        # annealed langevin dynamics.
+        # Annealed Langevin dynamics
         time = 0
         for sigma in tqdm(self.sigmas, total=self.sigmas.size(0), disable=ld_kwargs.disable_bar):
             if sigma < ld_kwargs.min_sigma:
                 break
             step_size = ld_kwargs.step_lr * (sigma / self.sigmas[-1]) ** 2
 
+            # Add time embedding
             time_tensor = torch.Tensor([time])
             time_tensor = time_tensor.to(self.device)
             time_emb = self.time_mlp(time_tensor)
@@ -531,13 +712,14 @@ class CDVAE(BaseModule):
             time += 1
 
             for step in range(ld_kwargs.n_step_each):
+                # Add noise
                 noise_cart = torch.randn_like(
                     cur_frac_coords) * torch.sqrt(step_size * 2)
                 pred_cart_coord_diff, pred_atom_types = self.decoder(
                     z_time, cur_frac_coords, cur_atom_types, num_atoms, lengths, angles)
                 cur_cart_coords = frac_to_cart_coords(
                     cur_frac_coords, lengths, angles, num_atoms)
-                pred_cart_coord_diff = pred_cart_coord_diff / sigma  # 这个才是论文中的Sx,t?
+                pred_cart_coord_diff = pred_cart_coord_diff / sigma  # This is the S(x,t) in the paper
                 cur_cart_coords = cur_cart_coords + step_size * pred_cart_coord_diff + noise_cart
                 cur_frac_coords = cart_to_frac_coords(
                     cur_cart_coords, lengths, angles, num_atoms)
@@ -569,7 +751,14 @@ class CDVAE(BaseModule):
 
     def sample_composition(self, composition_prob, num_atoms):
         """
-        Samples composition such that it exactly satisfies composition_prob
+        Sample composition such that it exactly satisfies composition_prob.
+        
+        Args:
+            composition_prob: Target composition probabilities
+            num_atoms: Number of atoms per structure
+            
+        Returns:
+            Sampled atom types that match the target composition
         """
         batch = torch.arange(
             len(num_atoms), device=num_atoms.device).repeat_interleave(num_atoms)
@@ -586,7 +775,7 @@ class CDVAE(BaseModule):
 
             sampled_comp = atom_type.repeat_interleave(atom_num, dim=0)
 
-            # if the rounded composition gives less atoms, sample the rest
+            # If the rounded composition gives less atoms, sample the rest
             if sampled_comp.size(0) < num_atom:
                 left_atom_num = num_atom - sampled_comp.size(0)
 
@@ -595,7 +784,7 @@ class CDVAE(BaseModule):
                 left_comp_prob[left_comp_prob < 0.] = 0.
                 left_comp = torch.multinomial(
                     left_comp_prob, num_samples=left_atom_num, replacement=True)
-                # convert to atomic number
+                # Convert to atomic number
                 left_comp = left_comp + 1
                 sampled_comp = torch.cat([sampled_comp, left_comp], dim=0)
 

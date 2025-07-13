@@ -1,5 +1,7 @@
 # Con-CDVAE
 
+[中文版README](README_CH.md)
+
 This code is improved on the basis of 
 [CDVAE](https://arxiv.org/abs/2110.06197), 
 and implements the generation of crystals according to 
@@ -48,14 +50,14 @@ torchmetrics             1.6.3
 For details, you can refer to [PyTorch](https://pytorch.org), [pytorch-geometric](https://pytorch-geometric.readthedocs.io/en/latest/#), [pytorch-lightning](https://lightning.ai/docs/pytorch/stable/).
 
 
-After setting up the environment, you can use the provided model checkpoint to run PODGen for conditional generation of topological materials. Before doing so, make sure to update the necessary environment paths. You can either run the following commands:
+After setting up the environment, you can use the provided model checkpoint to run Con-CDVAE for conditional generation of materials. Before doing so, make sure to update the necessary environment paths. You can either run the following commands:
 
 ```
 cp .env_bak .env
 bash writeenv.sh
 ```
 
-Or, if you prefer, modify the .env file manually. Update it with the following lines, replacing <YOUR_PATH_TO_CONCDVAE> with the absolute path to your PODGen directory:
+Or, if you prefer, modify the .env file manually. Update it with the following lines, replacing <YOUR_PATH_TO_CONCDVAE> with the absolute path to your Con-CDVAE directory:
 
 
 ```
