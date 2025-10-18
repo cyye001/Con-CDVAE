@@ -1,89 +1,89 @@
-root_path: ${oc.env:PROJECT_ROOT}/data/mptest
-prelo_prop: ['formation_energy_per_atom', 'band_gap', 'FM_type', 'BG_type','CS_type']
-prop: ['formation_energy_per_atom','band_gap']
-num_targets: 1
-niggli: true
-primitive: False
-graph_method: mindistance
-lattice_scale_method: scale_length
-preprocess_workers: 1
-readout: mean
-max_atoms: 20
-otf_graph: false
-eval_model_name: mp20
+root_path: ${oc.env:PROJECT_ROOT}/data/mptest                                           # Base data directory (resolved from PROJECT_ROOT)
+prelo_prop: ['formation_energy_per_atom', 'band_gap', 'FM_type', 'BG_type','CS_type']   # Properties to preload/cache from CSV if present
+prop: ['formation_energy_per_atom','band_gap']                                          # Target property keys to include in Data objects
+num_targets: 1                                                                          # Output dimension of property head(s) in models (may does not work in this project)
+niggli: true                                                                            # Apply Niggli reduction to standardize the cell
+primitive: False                                                                        # Convert to primitive cell if True; keep conventional cell if False
+graph_method: mindistance                                                               # Crystal graph builder: crystalnn|mindistance|none
+lattice_scale_method: scale_length                                                      # How to scale lattice features; scale_length = |a,b,c| / N^(1/3)
+preprocess_workers: 1                                                                   # Parallel workers for preprocessing (p_umap num_cpus)
+readout: mean                                                                           # Graph readout/pooling over nodes: mean|sum|cat
+max_atoms: 20                                                                           # Max number of atoms the model predicts (classification bins size)
+otf_graph: false                                                                        # Build graph on-the-fly in the encoder model (True) vs use precomputed (False) 
+eval_model_name: mp20                                                                   # Tag/name used by evaluation scripts to pick model/checkpoints
 
 
-train_max_epochs: 3
-early_stopping_patience: 100000
-teacher_forcing_max_epoch: 15
+train_max_epochs: 3                                                                     # Max training epochs
+early_stopping_patience: 100000                                                         # Early stopping patience (epochs without improvement)
+teacher_forcing_max_epoch: 15                                                           # Before this epoch, the lattice constants fed into the decoder were all ground-truth values.
 
-n_delta: 40
-tolerance: 0.1
-use_space_group: false
-load_old: false
-use_pos_index: false
+n_delta: 40                                                                             # Reserved/for sampling scripts: number of delta steps (not used in core training code)
+tolerance: 0.1                                                                          # Symmetry tolerance (Å) for space group detection
+use_space_group: false                                                                  # If True, compute and attach space group/Wyckoff info during preprocessing
+load_old: false                                                                         # If cached preprocessed data exists at save_path, load it instead of recomputing
+use_pos_index: false                                                                    # Add per-element occurrence index for atoms (0,1,2,...) within each species
 
-datamodule:
-  _target_: concdvae.pl_data.datamodule.CrystDataModule
+datamodule:                                                                             # PyTorch Lightning DataModule configuration
+  _target_: concdvae.pl_data.datamodule.CrystDataModule                                 # Class to instantiate
 
-  datasets:
-    train:
-      _target_: concdvae.pl_data.dataset.CrystDataset
-      name: Formation energy train
-      path: ${data.root_path}/train.csv
-      prop: ${data.prop}
-      niggli: ${data.niggli}
-      primitive: ${data.primitive}
-      graph_method: ${data.graph_method}
-      lattice_scale_method: ${data.lattice_scale_method}
-      preprocess_workers: ${data.preprocess_workers}
-      save_path: ${data.root_path}/train_data.pt
-      tolerance: ${data.tolerance}
-      use_space_group: ${data.use_space_group}
+  datasets: 
+    train:  
+      _target_: concdvae.pl_data.dataset.CrystDataset                                   # Dataset class
+      name: Formation energy train  
+      path: ${data.root_path}/train.csv  
+      prop: ${data.prop}  
+      niggli: ${data.niggli}  
+      primitive: ${data.primitive}  
+      graph_method: ${data.graph_method}  
+      lattice_scale_method: ${data.lattice_scale_method}  
+      preprocess_workers: ${data.preprocess_workers}  
+      save_path: ${data.root_path}/train_data.pt 
+      tolerance: ${data.tolerance} 
+      use_space_group: ${data.use_space_group} 
       use_pos_index: ${data.use_pos_index}
-      load_old: ${data.load_old}
-      prelo_prop: ${data.prelo_prop}
+      load_old: ${data.load_old} 
+      prelo_prop: ${data.prelo_prop} 
 
-    val:
-      - _target_: concdvae.pl_data.dataset.CrystDataset
-        name: Formation energy val
+    val:                                                                                # Validation dataset(s)
+      - _target_: concdvae.pl_data.dataset.CrystDataset  
+        name: Formation energy val 
         path: ${data.root_path}/val.csv
-        prop: ${data.prop}
+        prop: ${data.prop} 
         niggli: ${data.niggli}
         primitive: ${data.primitive}
-        graph_method: ${data.graph_method}
+        graph_method: ${data.graph_method} 
         lattice_scale_method: ${data.lattice_scale_method}
         preprocess_workers: ${data.preprocess_workers}
-        save_path: ${data.root_path}/val_data.pt
-        tolerance: ${data.tolerance}
-        use_space_group: ${data.use_space_group}
-        use_pos_index: ${data.use_pos_index}
-        load_old: ${data.load_old}
-        prelo_prop: ${data.prelo_prop}
+        save_path: ${data.root_path}/val_data.pt 
+        tolerance: ${data.tolerance} 
+        use_space_group: ${data.use_space_group} 
+        use_pos_index: ${data.use_pos_index} 
+        load_old: ${data.load_old} 
+        prelo_prop: ${data.prelo_prop} 
 
-    test:
+    test:                                                                               # Test dataset(s)
       - _target_: concdvae.pl_data.dataset.CrystDataset
-        name: Formation energy test
-        path: ${data.root_path}/test.csv
+        name: Formation energy test 
+        path: ${data.root_path}/test.csv 
         prop: ${data.prop}
         niggli: ${data.niggli}
-        primitive: ${data.primitive}
-        graph_method: ${data.graph_method}
-        lattice_scale_method: ${data.lattice_scale_method}
+        primitive: ${data.primitive} 
+        graph_method: ${data.graph_method} 
+        lattice_scale_method: ${data.lattice_scale_method} 
         preprocess_workers: ${data.preprocess_workers}
         save_path: ${data.root_path}/test_data.pt
-        tolerance: ${data.tolerance}
-        use_space_group: ${data.use_space_group}
-        use_pos_index: ${data.use_pos_index}
-        load_old: ${data.load_old}
-        prelo_prop: ${data.prelo_prop}
+        tolerance: ${data.tolerance} 
+        use_space_group: ${data.use_space_group} 
+        use_pos_index: ${data.use_pos_index} 
+        load_old: ${data.load_old} 
+        prelo_prop: ${data.prelo_prop} 
 
-  num_workers:
-    train: 0
-    val: 0
-    test: 0
+  num_workers:                                                    # PyTorch DataLoader workers
+    train: 0                                                      # Number of workers for training loader
+    val: 0                                                        # Number of workers for validation loader
+    test: 0                                                       # Number of workers for test loader
 
-  batch_size:
-    train: 10
-    val: 10
-    test: 10
+  batch_size:                                                     # Batch sizes for each split
+    train: 10                                                     # Training batch size
+    val: 10                                                       # Validation batch size
+    test: 10                                                      # Test batch size

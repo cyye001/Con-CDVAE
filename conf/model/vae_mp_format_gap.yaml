@@ -1,32 +1,32 @@
-_target_: concdvae.pl_modules.model.CDVAE
-hidden_dim: 256
-latent_dim: 256
-fc_num_layers: 1
-time_emb_dim: 64
-max_atoms: ${data.max_atoms}
-cost_natom: 1.
-cost_coord: 10.
-cost_type: 1.
-cost_lattice: 10.
-cost_composition: 1.
-cost_edge: 10.
-cost_property: 3.
-beta: 0.01
-teacher_forcing_lattice: true
-teacher_forcing_max_epoch: ${data.teacher_forcing_max_epoch}
-max_neighbors: 20  # maximum number of neighbors for OTF graph bulding in decoder
-radius: 9.  # maximum search radius for OTF graph building in decoder
-sigma_begin: 10.
-sigma_end: 0.01
-type_sigma_begin: 5.
-type_sigma_end: 0.01
-num_noise_level: 50
-predict_property: False
+_target_: concdvae.pl_modules.model.CDVAE           # Main CDVAE model class
+hidden_dim: 256                                     # Hidden size for MLP heads/decoder embeddings
+latent_dim: 256                                     # Latent dimension z
+fc_num_layers: 1                                     # Layers in small fully-connected blocks
+time_emb_dim: 64                                     # Time embedding dimension for diffusion steps
+max_atoms: ${data.max_atoms}                        # Number of classes for num-atom prediction (max atoms)
+cost_natom: 1.                                       # Loss weight: number of atoms
+cost_coord: 10.                                      # Loss weight: coordinates (diffusion)
+cost_type: 1.                                        # Loss weight: atom types
+cost_lattice: 10.                                    # Loss weight: lattice lengths/angles
+cost_composition: 1.                                 # Loss weight: composition per-atom distribution
+cost_edge: 10.                                       # Reserved (edge-related); not used in current loss
+cost_property: 3.                                    # Loss weight: condition/property prediction (if enabled)
+beta: 0.01                                           # KL divergence weight for VAE regularization
+teacher_forcing_lattice: true                        # Use GT lattice under teacher forcing in early epochs
+teacher_forcing_max_epoch: ${data.teacher_forcing_max_epoch}  # Teacher forcing cutoff epoch
+max_neighbors: 20                                     # maximum number of neighbors for OTF graph bulding in decoder
+radius: 9.                                            # maximum search radius for OTF graph building in decoder
+sigma_begin: 10.                                      # Starting noise level (sigma) in diffusion schedule (coordinate)
+sigma_end: 0.01                                       # Ending noise level (sigma) in diffusion schedule (coordinate)
+type_sigma_begin: 5.                                  # Starting noise level (sigma) in diffusion schedule (atom type)
+type_sigma_end: 0.01                                   # Ending noise level (sigma) in diffusion schedule (atom type)
+num_noise_level: 50                                  # Number of noise levels in the diffusion schedule
+predict_property: False                               # Include condition prediction loss in total loss (not used in training)
 
-n_delta: 40
+n_delta: 40                                           # Reserved for sampling scripts (not used in training)
 
 defaults:
-  - encoder: dimenet
-  - decoder: gemnet
-  - conditionmodel: mp_format_gap
-  - conditionpre: pre_mp_format_gap
+  - encoder: dimenet                                  # Encoder architecture (DimeNet++)
+  - decoder: gemnet                                   # Decoder architecture (GemNetT)
+  - conditionmodel: mp_format_gap                      # Conditioning module (embeddings of given conditions)
+  - conditionpre: pre_mp_format_gap                    # Predictors for condition-guided latent regularization

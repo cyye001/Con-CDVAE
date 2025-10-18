@@ -1,17 +1,17 @@
-_target_: concdvae.pl_modules.gnn.DimeNetPlusPlusWrap
-num_targets: ${data.num_targets}
-hidden_channels: 128
-num_blocks: 4
-int_emb_size: 64
-basis_emb_size: 8
-out_emb_channels: 256
-num_spherical: 7
-num_radial: 6
-otf_graph: ${data.otf_graph}
-cutoff: 7.0
-max_num_neighbors: 20
-envelope_exponent: 5
-num_before_skip: 1
-num_after_skip: 2
-num_output_layers: 3
-readout: ${data.readout}
+_target_: concdvae.pl_modules.gnn.DimeNetPlusPlusWrap   # DimeNet++ encoder wrapper
+num_targets: ${data.num_targets}                        # Output channels (overridden to latent_dim by model)
+hidden_channels: 128                                    # Hidden size for DimeNet++ layers
+num_blocks: 4                                           # Number of interaction/output blocks
+int_emb_size: 64                                        # Size of interaction block embeddings
+basis_emb_size: 8                                       # Size of basis function embeddings
+out_emb_channels: 256                                   # Channels in output embedding block
+num_spherical: 7                                        # Spherical harmonics order
+num_radial: 6                                           # Radial basis size
+otf_graph: ${data.otf_graph}                            # Build graph on-the-fly using PBC radius graph
+cutoff: 7.0                                             # Neighbor cutoff radius (Å)
+max_num_neighbors: 20                                   # Max neighbors per atom for OTF graph
+envelope_exponent: 5                                    # Envelope exponent for basis functions
+num_before_skip: 1                                      # Layers before residual skip
+num_after_skip: 2                                       # Layers after residual skip
+num_output_layers: 3                                    # MLP depth in output blocks
+readout: ${data.readout}                                # Pooling over nodes: mean|sum|cat

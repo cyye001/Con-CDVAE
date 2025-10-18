@@ -1,10 +1,10 @@
 # log frequency
-val_check_interval: 1
-progress_bar_refresh_rate: 20
+val_check_interval: 1           # Validate every N epochs (check_val_every_n_epoch)
+progress_bar_refresh_rate: 20   # Progress bar refresh rate in steps (may be ignored by newer PL)
 
 csvlogger:
-  name: ${expname}
+  name: ${expname}              # CSVLogger run name (used for log directory)
 
 lr_monitor:
-  logging_interval: "step"
-  log_momentum: False
+  logging_interval: "step"   # Log learning rate per 'step' or 'epoch'
+  log_momentum: False        # Also log optimizer momentum if available

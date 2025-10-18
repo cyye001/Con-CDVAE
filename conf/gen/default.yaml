@@ -1,26 +1,26 @@
-model_path: ${oc.env:PROJECT_ROOT}/src/model/mp20_format  # path to the model directory
-prior_path: None             # if set None, will use model_path
-model_file: epoch=330-step=17543.ckpt   # ckpt of the main model, if set None, will use the last.ckpt in model_path
-prior_file: prior_default-epoch=95-step=10176.ckpt # ckpt of the prior model, if set None, will use the {prior_label}-last.ckpt in prior_path
-prior_label: None # label of the prior model, if set None, will use the label in prior_file
+model_path: ${oc.env:PROJECT_ROOT}/src/model/mp20_format      # path to the model directory
+prior_path: None                                              # if set None, will use model_path
+model_file: epoch=330-step=17543.ckpt                         # ckpt of the main model, if set None, will use the last.ckpt in model_path
+prior_file: prior_default-epoch=95-step=10176.ckpt            # ckpt of the prior model, if set None, will use the {prior_label}-last.ckpt in prior_path
+prior_label: None                                             # label of the prior model, if set None, will use the label in prior_file
 # prior_label and prior_file can not be both None
 
-label: ''
-deterministic: true
-seed: 123
-batch_size: 20
-down_sample: 1
-num_batches_to_samples: 2
-save_traj: false
-down_sample_traj_step: 10
-num_samples_per_z: 1
-use_one: true
+label: ''                     # Optional suffix tag for output filenames
+deterministic: true           # Enable deterministic behavior (seed all RNGs)
+seed: 123                     # Random seed used when deterministic is true
+batch_size: 20                # Number of latent samples per batch (pre down-sampling)
+down_sample: 1                # Oversample factor; keep batch_size/down_sample best-matching z
+num_batches_to_samples: 2     # Number of z batches to sample/generate
+save_traj: false              # Save full Langevin trajectories for analysis
+down_sample_traj_step: 10     # Save every N-th trajectory step when save_traj is true
+num_samples_per_z: 1          # Number of samples drawn per z embedding
+use_one: true                 # Use a single example to handle missing condition features
 
-input_path: general_less.csv
-refdata_path: ${oc.env:PROJECT_ROOT}/data/mp4conz/train.csv
+input_path: general_less.csv                                  # CSV of target conditions (relative to model_path)
+refdata_path: ${oc.env:PROJECT_ROOT}/data/mp4conz/train.csv   # Reference data for prior statistics, should be use in less strategy
 
 
-disable_bar: false
-min_sigma: 0.0
-step_lr: 1e-4
-n_step_each: 100
+disable_bar: false            # Disable progress bars during sampling
+min_sigma: 0.0               # Minimum noise level (sigma) in Langevin dynamics
+step_lr: 1e-4                # Step size for Langevin updates
+n_step_each: 100             # Langevin steps per noise level/phase

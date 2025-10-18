@@ -1,7 +1,7 @@
-_target_: concdvae.pl_modules.decoder.GemNetTDecoder
-hidden_dim: 128
-latent_dim: ${model.latent_dim}
-time_emb_dim: ${model.time_emb_dim}
-max_neighbors: ${model.max_neighbors}
-radius: ${model.radius}
-scale_file: ${oc.env:PROJECT_ROOT}/concdvae/pl_modules/gemnet/gemnet-dT.json
+_target_: concdvae.pl_modules.decoder.GemNetTDecoder             # Decoder based on GemNet-T
+hidden_dim: 128                                                  # Atom/edge embedding size inside GemNet-T
+latent_dim: ${model.latent_dim}                                  # Latent z dimension
+time_emb_dim: ${model.time_emb_dim}                              # Time embedding dimension (z concatenation)
+max_neighbors: ${model.max_neighbors}                            # Max neighbors per atom (OTF graph)
+radius: ${model.radius}                                          # Cutoff radius (Å) for neighbor search
+scale_file: ${oc.env:PROJECT_ROOT}/concdvae/pl_modules/gemnet/gemnet-dT.json  # Precomputed GemNet scaling

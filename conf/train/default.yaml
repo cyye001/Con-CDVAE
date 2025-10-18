@@ -1,36 +1,36 @@
 # reproducibility
-deterministic: True
-random_seed: 42
-use_exit: False
+deterministic: True                # Enable deterministic training (sets seeds in run)
+random_seed: 42                    # Base random seed for Python/NumPy/PyTorch
+use_exit: False                    # Resume from existing checkpoint in run dir if available
 # training
 
 pl_trainer:
   fast_dev_run: False # Enable this for debug purposes
-  devices: 1
+  devices: 1                         # Number of devices (e.g., GPUs) to use
   # gpu: 1
-  strategy: 'auto'
-  accelerator: 'auto'
+  strategy: 'auto'                   # Distributed strategy (ddp, dp, etc.)
+  accelerator: 'auto'                # Hardware accelerator: cpu, gpu, or auto
 
-  precision: 32
-  # max_steps: 10000
-  max_epochs: ${data.train_max_epochs}
-  accumulate_grad_batches: 1
-  num_sanity_val_steps: 2
-  gradient_clip_val: 0.5
-  gradient_clip_algorithm: value
-  profiler: simple
-  use_distributed_sampler: True
-  log_every_n_steps: 1000000000
-  enable_progress_bar: True
+  precision: 32                      # Training precision: 32, 16, or bf16
+  # max_steps: 10000                 # Optional limit on total steps
+  max_epochs: ${data.train_max_epochs}  # Max epochs to train
+  accumulate_grad_batches: 1         # Gradient accumulation steps
+  num_sanity_val_steps: 2            # Sanity validation batches before training
+  gradient_clip_val: 0.5             # Gradient clipping value
+  gradient_clip_algorithm: value     # Clip by value or by norm
+  profiler: simple                   # Enable simple profiler for timing
+  use_distributed_sampler: True      # Use distributed sampler with DDP
+  log_every_n_steps: 1000000000      # Logging interval in steps
+  enable_progress_bar: True          # Show progress bar during training
 
-monitor_metric: 'val_loss'
-monitor_metric_mode: 'min'
+monitor_metric: 'val_loss'           # Metric to monitor for early stop/checkpoint
+monitor_metric_mode: 'min'           # Minimize or maximize the monitored metric
 
 early_stopping:
-  patience: ${data.early_stopping_patience} # 60
-  verbose: False
+  patience: ${data.early_stopping_patience} # 60  # Epochs to wait without improvement
+  verbose: False                              # Verbosity of early stopping callback
 
 model_checkpoints:
-  save_top_k: 1
-  verbose: False
-  save_last: True
+  save_top_k: 1                   # Keep top-K checkpoints by monitored metric
+  verbose: False                  # Verbose checkpoint logging
+  save_last: True                 # Also save a final 'last.ckpt'

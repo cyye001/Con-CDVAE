@@ -1,119 +1,119 @@
-_target_: concdvae.pl_modules.ConditionModel.ConditioningModule
-n_features: 128
-n_layers: 2
-condition_embeddings:
-  - _target_: concdvae.pl_modules.ConditionModel.ClassConditionEmbedding
-    condition_name: crystal_system
-    n_type: 7
-    n_emb: 64
-    n_features: 64
-    n_layers: 3
+_target_: concdvae.pl_modules.ConditionModel.ConditioningModule   # Conditioning module class
+n_features: 128                                                   # Output feature size after mixing all conditions
+n_layers: 2                                                       # Mixer MLP depth (fc_num_layers)
+condition_embeddings:                                             # List of per-condition embedding configs
+  - _target_: concdvae.pl_modules.ConditionModel.ClassConditionEmbedding  # Categorical condition embedding
+    condition_name: crystal_system                                        # Input dict key name
+    n_type: 7                                                             # Number of classes
+    n_emb: 64                                                             # Class embedding size
+    n_features: 64                                                        # Output features contributed
+    n_layers: 3                                                           # Depth of MLP after embedding
 
-  - _target_: concdvae.pl_modules.ConditionModel.ClassConditionEmbedding
-    condition_name: spacegroup
-    n_type: 231
-    n_emb: 64
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ClassConditionEmbedding  # Categorical condition embedding
+    condition_name: spacegroup                                            # Input dict key name
+    n_type: 231                                                           # Number of space group classes
+    n_emb: 64                                                             # Class embedding size
+    n_features: 64                                                        # Output features contributed
+    n_layers: 3                                                           # Depth of MLP after embedding
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: formation
-    condition_min: -5.0
-    condition_max: 0.5
-    grid_spacing: 0.5
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition via Gaussian RBF + MLP
+    condition_name: formation                                            # Input dict key name
+    condition_min: -5.0                                                  # RBF grid start
+    condition_max: 0.5                                                   # RBF grid end
+    grid_spacing: 0.5                                                    # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: bandgap
-    condition_min: -0.5
-    condition_max: 9.0
-    grid_spacing: 0.5
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition via Gaussian RBF + MLP
+    condition_name: bandgap                                              # Input dict key name
+    condition_min: -0.5                                                  # RBF grid start
+    condition_max: 9.0                                                   # RBF grid end
+    grid_spacing: 0.5                                                    # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: e_above_hull
-    condition_min: -0.01
-    condition_max: 0.09
-    grid_spacing: 0.01
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition via Gaussian RBF + MLP
+    condition_name: e_above_hull                                         # Input dict key name
+    condition_min: -0.01                                                 # RBF grid start
+    condition_max: 0.09                                                  # RBF grid end
+    grid_spacing: 0.01                                                   # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: a
-    condition_min: 0
-    condition_max: 40
-    grid_spacing: 2
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition via Gaussian RBF + MLP
+    condition_name: a                                                    # Lattice length a (Å)
+    condition_min: 0                                                     # RBF grid start
+    condition_max: 40                                                    # RBF grid end
+    grid_spacing: 2                                                      # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: b
-    condition_min: 0
-    condition_max: 38
-    grid_spacing: 2
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition via Gaussian RBF + MLP
+    condition_name: b                                                    # Lattice length b (Å)
+    condition_min: 0                                                     # RBF grid start
+    condition_max: 38                                                    # RBF grid end
+    grid_spacing: 2                                                      # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: c
-    condition_min: 0
-    condition_max: 44
-    grid_spacing: 2
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition via Gaussian RBF + MLP
+    condition_name: c                                                    # Lattice length c (Å)
+    condition_min: 0                                                     # RBF grid start
+    condition_max: 44                                                    # RBF grid end
+    grid_spacing: 2                                                      # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: alpha
-    condition_min: 0
-    condition_max: 180
-    grid_spacing: 10
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition via Gaussian RBF + MLP
+    condition_name: alpha                                                # Lattice angle alpha (deg)
+    condition_min: 0                                                     # RBF grid start
+    condition_max: 180                                                   # RBF grid end
+    grid_spacing: 10                                                     # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: beta
-    condition_min: 0
-    condition_max: 180
-    grid_spacing: 10
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition via Gaussian RBF + MLP
+    condition_name: beta                                                 # Lattice angle beta (deg)
+    condition_min: 0                                                     # RBF grid start
+    condition_max: 180                                                   # RBF grid end
+    grid_spacing: 10                                                     # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: gamma
-    condition_min: 0
-    condition_max: 180
-    grid_spacing: 10
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition via Gaussian RBF + MLP
+    condition_name: gamma                                                # Lattice angle gamma (deg)
+    condition_min: 0                                                     # RBF grid start
+    condition_max: 180                                                   # RBF grid end
+    grid_spacing: 10                                                     # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: density
-    condition_min: 0
-    condition_max: 24
-    grid_spacing: 2
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition via Gaussian RBF + MLP
+    condition_name: density                                              # Density (g/cm^3)
+    condition_min: 0                                                     # RBF grid start
+    condition_max: 24                                                    # RBF grid end
+    grid_spacing: 2                                                      # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: coor_number
-    condition_min: -1
-    condition_max: 16
-    grid_spacing: 1
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition via Gaussian RBF + MLP
+    condition_name: coor_number                                          # Coordination number
+    condition_min: -1                                                    # RBF grid start
+    condition_max: 16                                                    # RBF grid end
+    grid_spacing: 1                                                      # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: n_atom
-    condition_min: 0
-    condition_max: 20
-    grid_spacing: 1
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition via Gaussian RBF + MLP
+    condition_name: n_atom                                               # Number of atoms in cell
+    condition_min: 0                                                     # RBF grid start
+    condition_max: 20                                                    # RBF grid end
+    grid_spacing: 1                                                      # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.VectorialConditionEmbedding
-    condition_name: formula
-    n_in: 92
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.VectorialConditionEmbedding # Vector input embedding (e.g., averaged atom features)
+    condition_name: formula                                              # Input dict key name
+    n_in: 92                                                             # Length of input vector
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP

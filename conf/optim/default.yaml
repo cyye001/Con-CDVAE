@@ -1,15 +1,15 @@
 optimizer:
   #  Adam-oriented deep learning
-  _target_: torch.optim.Adam
+  _target_: torch.optim.Adam                 # Optimizer class
   #  These are all default parameters for the Adam optimizer
-  lr: 0.001
-  betas: [ 0.9, 0.999 ]
-  eps: 1e-08
-  weight_decay: 0
+  lr: 0.001                                  # Learning rate
+  betas: [ 0.9, 0.999 ]                      # Adam beta coefficients (beta1, beta2)
+  eps: 1e-08                                 # Numerical stability term
+  weight_decay: 0                            # L2 regularization strength
 
-use_lr_scheduler: True
+use_lr_scheduler: True                       # Enable learning rate scheduler
 lr_scheduler:
-  _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
-  factor: 0.6
-  patience: 30
-  min_lr: 1e-4
+  _target_: torch.optim.lr_scheduler.ReduceLROnPlateau  # Reduce LR on validation plateau
+  factor: 0.6                                 # Multiplicative LR reduction factor
+  patience: 30                                # Epochs without improvement before reducing LR
+  min_lr: 1e-4                                # Lower bound on learning rate

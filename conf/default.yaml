@@ -1,32 +1,31 @@
-expname: test
+expname: test                 # Experiment name used in output paths/logs
 
 # metadata specialised for each experiment
 core:
-  version: 0.0.1
+  version: 0.0.1            # Config file version
   tags:
-    - ${now:%Y-%m-%d}
+    - ${now:%Y-%m-%d}       # Auto tag with current date (YYYY-MM-DD)
 
 hydra:
   run:
-    dir: ${oc.env:HYDRA_JOBS}/singlerun/${now:%Y-%m-%d}/${expname}/
+    dir: ${oc.env:HYDRA_JOBS}/singlerun/${now:%Y-%m-%d}/${expname}/   # Per-run output directory
 
   sweep:
-    dir: ${oc.env:HYDRA_JOBS}/multirun/${now:%Y-%m-%d}/${expname}/
-    subdir: ${hydra.job.num}_${hydra.job.id}
+    dir: ${oc.env:HYDRA_JOBS}/multirun/${now:%Y-%m-%d}/${expname}/    # Multirun root directory
+    subdir: ${hydra.job.num}_${hydra.job.id}                          # Subdirectory per job
 
   job:
     env_set:
-      WANDB_START_METHOD: thread
-      WANDB_DIR: ${oc.env:WABDB_DIR}
+      WANDB_START_METHOD: thread                                       # Use thread start method for W&B
+      WANDB_DIR: ${oc.env:WABDB_DIR}                                   # W&B working directory
 
 
 defaults:
-  - data: default
-  - logging: default
-  - model: vae
-  - optim: default
-  - train: default
-  - prior: default
+  - data: default            # Data config to use
+  - logging: default         # Logging/monitoring configuration
+  - model: vae               # Model configuration group/name
+  - optim: default           # Optimizer and scheduler settings
+  - train: default           # Training loop and callbacks config
+  - prior: default           # Prior model configuration
 #    Decomment this parameter to get parallel job running
   # - override hydra/launcher: joblib
-

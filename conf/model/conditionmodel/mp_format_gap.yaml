@@ -1,19 +1,19 @@
-_target_: concdvae.pl_modules.ConditionModel.ConditioningModule
-n_features: 128
-n_layers: 2
-condition_embeddings:
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: formation_energy_per_atom
-    condition_min: -6.0
-    condition_max: 1.0
-    grid_spacing: 0.5
-    n_features: 64
-    n_layers: 3
+_target_: concdvae.pl_modules.ConditionModel.ConditioningModule   # Conditioning module to embed properties
+n_features: 128                                                   # Output feature size after mixing embeddings
+n_layers: 2                                                       # Mixer MLP depth (fc_num_layers)
+condition_embeddings:                                             # List of scalar condition embeddings
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition with Gaussian RBF + MLP
+    condition_name: formation_energy_per_atom                             # Input dict key name
+    condition_min: -6.0                                                  # RBF grid start
+    condition_max: 1.0                                                   # RBF grid end
+    grid_spacing: 0.5                                                    # RBF grid step
+    n_features: 64                                                       # Output features contributed
+    n_layers: 3                                                          # Depth of MLP after RBF
 
-  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
-    condition_name: band_gap
-    condition_min: -1.0
-    condition_max: 9.0
-    grid_spacing: 0.5
-    n_features: 64
-    n_layers: 3
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding # Scalar condition with Gaussian RBF + MLP
+    condition_name: band_gap                                              # Input dict key name
+    condition_min: -1.0                                                   # RBF grid start
+    condition_max: 9.0                                                    # RBF grid end
+    grid_spacing: 0.5                                                     # RBF grid step
+    n_features: 64                                                        # Output features contributed
+    n_layers: 3                                                           # Depth of MLP after RBF

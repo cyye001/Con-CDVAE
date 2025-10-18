@@ -1,9 +1,9 @@
 prior_model:
-  _target_: concdvae.pl_prior.model.prior
-  ddpm_noise_start: 0.001
-  ddpm_noise_end: 0.02
-  ddpm_n_noise: 300
-  time_emb_dim: 64
-  n_UNet_layers: 3
-  conditionmodel: ${model.conditionmodel}
-  hidden_dim: ${model.hidden_dim}
+  _target_: concdvae.pl_prior.model.prior      # Prior model class for z diffusion
+  ddpm_noise_start: 0.001                      # Beta schedule start (DDPM noise)
+  ddpm_noise_end: 0.02                         # Beta schedule end (DDPM noise)
+  ddpm_n_noise: 300                            # Number of diffusion steps (betas length)
+  time_emb_dim: 64                             # Time embedding dimension (sinusoidal + MLP)
+  n_UNet_layers: 3                             # UNet depth for prior decoder (down/up pairs)
+  conditionmodel: ${model.conditionmodel}      # Condition embedding module shared with main model
+  hidden_dim: ${model.hidden_dim}              # Latent dimension processed by prior UNet
