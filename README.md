@@ -172,3 +172,19 @@ run the following command:
 ```
 python cgcnn/predict.py --gendatapath /your_path_to_generated_crystal/ --modelpath /your_path_to_cgcnn_model/model_best.pth.tar --file your_crystal_file.pt --label your_label
 ```
+
+## Running the API service
+
+We use FastAPI to deploy the Con-CDVAE model on our website ([MaterialsGalaxy](https://materialsgalaxy.iphy.ac.cn/tools/structures-generator)).
+Below is an example of how to launch the service:
+
+```
+cd fastapi
+nohup uvicorn concdvae_api:app  --host '0.0.0.0' --port 8081 --reload > log_api 2>&1 &
+```
+
+After deployment, you can test the API using the following command:
+
+```
+python ../scripts/test_api.py
+```

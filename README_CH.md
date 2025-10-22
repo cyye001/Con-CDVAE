@@ -156,4 +156,20 @@ python cgcnn/predict.py --gendatapath /your_path_to_generated_crystal/ --modelpa
 
 [English README](README.md)
 
+
+
+## 运行API服务
+
+我们用FastAPI在我们的网站([Materials Galaxy](https://materialsgalaxy.iphy.ac.cn/tools/structures-generator))上部署了Con-CDVAE模型，部署的例子：
+
+
+```
+cd fastapi
+nohup uvicorn concdvae_api:app  --host '0.0.0.0' --port 8081 --reload > log_api 2>&1 &
+```
+
+你可以部署完成后你可以用下面的代码测试：
+
+```
+python ../scripts/test_api.py
 ```

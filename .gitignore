@@ -21,3 +21,7 @@ concdvae/pl_prior/datamodule.py
 conf/gen/test.yaml
 
 src/model/mp20_format/eval*
+
+fastapi/__pycache__/
+
+fastapi/log_api
