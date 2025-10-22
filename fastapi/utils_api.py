@@ -3,8 +3,6 @@ import numpy as np
 from concdvae.common.data_utils import chemical_symbols
 from pymatgen.core.structure import Structure
 from pymatgen.core.lattice import Lattice
-# from concdvae.pl_data.dataset import formula2atomnums
-# from concdvae.pl_data.dataset import AtomCustomJSONInitializer
 
 def full_pre(n_cry, fe, n_atom, formula, ari, device):
     prop_dict = {}
@@ -13,11 +11,6 @@ def full_pre(n_cry, fe, n_atom, formula, ari, device):
     if n_cry == 'None':
         n_cry = 1
     n_cry = int(n_cry)
-
-    # if bg != 'None':
-    #     bg = float(bg)
-    #     prop_dict.update({'bandgap': torch.Tensor([bg]).float().to(device),'band_gap': torch.Tensor([bg]).float().to(device)})
-
     if fe != 'None':
         fe = float(fe)
         prop_dict.update({'formation': torch.Tensor([fe]).float().to(device), 'formation_energy_per_atom': torch.Tensor([fe]).float().to(device)})
@@ -102,9 +95,9 @@ def tensor2cif(frac_coords, num_atoms, atom_types, lengths, angles):
 
     num_materal = 0
     cif_list = []
-    for i in range(len(num_atoms_list)):  # 第i个batch
+    for i in range(len(num_atoms_list)):  
         now_atom = 0
-        for a in range(len(num_atoms_list[i])):  # 第a个材料
+        for a in range(len(num_atoms_list[i])): 
             length = lengths_list[i][a]
             angle = angles_list[i][a]
             atom_num = num_atoms_list[i][a]
