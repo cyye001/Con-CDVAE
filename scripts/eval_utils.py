@@ -3,6 +3,7 @@ import hydra
 from pathlib import Path
 import numpy as np
 import os
+import sys
 import torch
 from torch_geometric.loader import DataLoader
 from torch.nn import functional as F
@@ -274,8 +275,15 @@ def generation(model, prior, input_dict,
             z_con = torch.cat((z, condition_emb), dim=1)
             z_con = model.z_condition(z_con)
 
+            gt_num_atoms = None
+            gt_atom_types = None
+            if 'gt_num_atoms' in input_dict.keys():
+                gt_num_atoms = input_dict['gt_num_atoms']
+            if 'gt_atom_types' in input_dict.keys():
+                gt_atom_types = input_dict['gt_atom_types']
+
             for sample_idx in range(ld_kwargs.num_samples_per_z):
-                samples = model.langevin_dynamics(z_con, ld_kwargs)
+                samples = model.langevin_dynamics(z_con, ld_kwargs, gt_num_atoms=gt_num_atoms, gt_atom_types=gt_atom_types)
 
                 # collect sampled crystals in this batch.
                 batch_frac_coords.append(samples['frac_coords'].detach().cpu())
